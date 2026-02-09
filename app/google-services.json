@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "874747133267",
+    "project_id": "niramaya-ae29a",
+    "storage_bucket": "niramaya-ae29a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:874747133267:android:406f0027587b25540235a6",
+        "android_client_info": {
+          "package_name": "com.example.niramaya"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "874747133267-3bi8ikl6qejgj0u2d70k34em7g9qipkd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.niramaya",
+            "certificate_hash": "19a58a51fbbedaaa5dd766bd8291fd6add861a90"
+          }
+        },
+        {
+          "client_id": "874747133267-jq8icu6lofaa4b49tpdi6o4vjs7v1ohr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWeTJudc6M5rXG2ARlfglqiFQ6Paab0PM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "874747133267-jq8icu6lofaa4b49tpdi6o4vjs7v1ohr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
