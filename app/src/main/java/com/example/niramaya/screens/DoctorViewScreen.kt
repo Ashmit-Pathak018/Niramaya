@@ -5,9 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Medication
-import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,68 +15,96 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.niramaya.data.FirestoreRepository
 import com.example.niramaya.data.HistoryRecord
+import com.example.niramaya.summary.GeminiSummaryService
+import com.example.niramaya.utils.formatGeminiSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DoctorViewScreen(navController: NavController) {
 
     var records by remember { mutableStateOf<List<HistoryRecord>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var aiSummary by remember { mutableStateOf<String?>(null) }
+    var isAiLoading by remember { mutableStateOf(false) }
 
-    // 🔥 LIVE RECORD STREAM
+    // 🔥 Firestore stays untouched
     LaunchedEffect(Unit) {
-        FirestoreRepository.listenToRecords { updatedRecords ->
-            records = updatedRecords.sortedByDescending { it.date }
-            isLoading = false
+        FirestoreRepository.listenToRecords {
+            records = it
         }
     }
 
+    // 🤖 AI Summary
+    LaunchedEffect(records) {
+        if (records.isNotEmpty()) {
+            isAiLoading = true
+            aiSummary = GeminiSummaryService.generateDoctorSummary(records)
+            isAiLoading = false
+        }
+    }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = {
-                    Text("Doctor View", fontWeight = FontWeight.Bold)
-                }
+                title = { Text("Doctor Summary", fontWeight = FontWeight.Bold) }
             )
         }
     ) { padding ->
 
-        when {
-            isLoading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = androidx.compose.ui.Alignment.Center
-                ) {
-                    CircularProgressIndicator()
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(Color(0xFFFDF8F5))
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+
+            // 🤖 AI MEDICAL SUMMARY
+            item {
+                Text(
+                    "AI Medical Summary",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                when {
+                    isAiLoading -> {
+                        CircularProgressIndicator()
+                    }
+
+                    aiSummary != null -> {
+                        GeminiSummaryCard(aiSummary!!)
+                    }
+
+                    else -> {
+                        Text("No summary available", color = Color.Gray)
+                    }
                 }
             }
 
-            records.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = androidx.compose.ui.Alignment.Center
-                ) {
-                    Text("No medical records yet", color = Color.Gray)
-                }
+            // 📄 RECENT RECORDS (VERIFICATION)
+            item {
+                Text(
+                    "Recent Records",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
             }
 
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .background(Color(0xFFFDF8F5))
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+            items(records.take(5)) { record ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
                 ) {
-
-                    items(records) { record ->
-                        DoctorRecordCard(record)
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(record.title, fontWeight = FontWeight.Bold)
+                        Text(
+                            record.recordType.name.replace("_", " "),
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
                     }
                 }
             }
@@ -88,66 +113,64 @@ fun DoctorViewScreen(navController: NavController) {
 }
 
 @Composable
-fun DoctorRecordCard(record: HistoryRecord) {
+fun GeminiSummaryCard(rawText: String) {
+    val sections = remember(rawText) {
+        formatGeminiSummary(rawText)
+    }
 
     Card(
-        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(2.dp),
-        modifier = Modifier.fillMaxWidth()
+        shape = RoundedCornerShape(20.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
 
-            // Header
-            Text(
-                text = record.date,
-                fontSize = 13.sp,
-                color = Color.Gray
-            )
+            SummarySection("Patient Summary", sections.patientSummary)
 
-            Text(
-                text = "Dr. ${record.doctor}",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
+            SummarySection("Active Medications", sections.medications)
 
-            Spacer(modifier = Modifier.height(12.dp))
+            SummarySection("Important Findings", sections.findings)
 
-            // Medicines
-            Row {
-                Icon(Icons.Default.Medication, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Medicines", fontWeight = FontWeight.Medium)
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            record.medicines.forEach { med ->
-                Text(
-                    "• ${med.name} — ${med.dosage}",
-                    fontSize = 14.sp
-                )
-            }
-
-            // Patient Notes (if any)
-            if (record.personalNotes.isNotBlank()) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row {
-                    Icon(Icons.Default.Notes, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Patient Notes", fontWeight = FontWeight.Medium)
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = record.personalNotes,
-                    fontSize = 14.sp,
-                    color = Color.DarkGray
+            if (sections.alerts.isNotBlank()) {
+                SummarySection(
+                    title = "⚠ Alerts",
+                    content = sections.alerts,
+                    highlight = true
                 )
             }
         }
     }
+}
+
+@Composable
+fun SummarySection(
+    title: String,
+    content: String,
+    highlight: Boolean = false
+) {
+    if (content.isBlank()) return
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    Text(
+        text = title,
+        fontWeight = FontWeight.Bold,
+        fontSize = 16.sp,
+        color = if (highlight) Color(0xFFD32F2F) else Color.Black
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    content
+        .lines()
+        .filter { it.isNotBlank() }
+        .forEach { line ->
+            Text(
+                text = "• ${line.trim()}",
+                fontSize = 14.sp,
+                color = Color.DarkGray,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
 }
 

@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Medication
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,22 +28,27 @@ fun RecordDetailScreen(
     var isLoading by remember { mutableStateOf(true) }
     var isSaving by remember { mutableStateOf(false) }
 
-    var doctorName by remember { mutableStateOf("") }
-    var visitDate by remember { mutableStateOf("") }
+    // ─── RECORD STATE ───
+    var title by remember { mutableStateOf("") }
+    var extractedText by remember { mutableStateOf("") }
     var personalNotes by remember { mutableStateOf("") }
+    var recordType by remember { mutableStateOf(RecordType.OTHER) }
 
     val medicines = remember { mutableStateListOf<MedicineEntry>() }
 
-    // 🔥 Fetch record
+    // ─── FETCH RECORD (SAFE) ───
     LaunchedEffect(recordId) {
         FirestoreRepository.fetchRecordById(
             recordId = recordId,
             onSuccess = { record ->
-                doctorName = record.doctor
-                visitDate = record.date
+                title = record.title
+                extractedText = record.extractedText
                 personalNotes = record.personalNotes
+                recordType = record.recordType
+
                 medicines.clear()
                 medicines.addAll(record.medicines)
+
                 isLoading = false
             },
             onFailure = {
@@ -64,7 +70,7 @@ fun RecordDetailScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Record Details", fontWeight = FontWeight.Bold) },
+                title = { Text("Edit Record", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color(0xFFFDF8F5)
                 )
@@ -75,15 +81,14 @@ fun RecordDetailScreen(
                 onClick = {
                     isSaving = true
 
-                    FirestoreRepository.updatePrescription(
+                    FirestoreRepository.updateRecord(
                         recordId = recordId,
-                        prescription = PrescriptionResult(
-                            doctor = doctorName,
-                            date = visitDate,
-                            diagnosis = "",
-                            medicines = medicines.toList(),
-                            personalNotes = personalNotes.trim()
-                        ),
+                        title = title,
+                        extractedText = extractedText,
+                        medicines = if (recordType == RecordType.PRESCRIPTION)
+                            medicines.toList()
+                        else emptyList(),
+                        personalNotes = personalNotes.trim(),
                         onSuccess = {
                             isSaving = false
                             navController.popBackStack()
@@ -120,69 +125,105 @@ fun RecordDetailScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .background(Color(0xFFFDF8F5))
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            // ─── BASIC INFO ───
+            item {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Record Title") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
 
             item {
                 OutlinedTextField(
-                    value = doctorName,
-                    onValueChange = { doctorName = it },
-                    label = { Text("Doctor Name") },
-                    modifier = Modifier.fillMaxWidth(),
+                    value = extractedText,
+                    onValueChange = { extractedText = it },
+                    label = { Text("Extracted Text") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp),
+                    maxLines = 8,
                     shape = RoundedCornerShape(12.dp)
                 )
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedTextField(
-                    value = visitDate,
-                    onValueChange = { visitDate = it },
-                    label = { Text("Date of Visit") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
+            item {
                 OutlinedTextField(
                     value = personalNotes,
                     onValueChange = { personalNotes = it },
                     label = { Text("Personal Notes") },
-                    placeholder = {
-                        Text("What the doctor said but didn’t write…")
-                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(140.dp),
-                    maxLines = 6,
+                        .height(120.dp),
+                    maxLines = 5,
                     shape = RoundedCornerShape(12.dp)
                 )
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                Text(
-                    "Medicines",
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0F3D6E)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // ✅ REUSE EXISTING EditableMedCard
-            itemsIndexed(medicines) { index, med ->
-                EditableMedCard(
-                    entry = med,
-                    onNameChange = { newName ->
-                        medicines[index] = medicines[index].copy(name = newName)
-                    },
-                    onDosageChange = { newDosage ->
-                        medicines[index] = medicines[index].copy(dosage = newDosage)
+            // 💊 EDITABLE MEDICINES
+            if (recordType == RecordType.PRESCRIPTION) {
+
+                item {
+                    Text(
+                        "Medicines",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = Color(0xFF0F3D6E)
+                    )
+                }
+
+                itemsIndexed(medicines) { index, med ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Medication, null)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    "Medicine ${index + 1}",
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = med.name,
+                                onValueChange = {
+                                    medicines[index] =
+                                        medicines[index].copy(name = it)
+                                },
+                                label = { Text("Name") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = med.dosage,
+                                onValueChange = {
+                                    medicines[index] =
+                                        medicines[index].copy(dosage = it)
+                                },
+                                label = { Text("Dosage") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
-                )
+                }
             }
 
-            item { Spacer(modifier = Modifier.height(100.dp)) }
+            item { Spacer(modifier = Modifier.height(120.dp)) }
         }
     }
 }

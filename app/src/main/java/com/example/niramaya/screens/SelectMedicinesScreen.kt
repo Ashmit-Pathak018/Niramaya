@@ -37,63 +37,66 @@ fun SelectMedicinesScreen(navController: NavController) {
     var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isSaving by remember { mutableStateOf(false) }
 
-    // 🔥 LOAD ACTIVE + ALL MEDS (NO await)
-    LaunchedEffect(Unit) {
+    // ---------------- LIVE LISTENERS ----------------
+    DisposableEffect(user.uid) {
 
-        // 1️⃣ Load active meds first
-        db.collection("users")
+        // 🔥 ACTIVE MEDICATIONS (LIVE)
+        val activeListener = db.collection("users")
             .document(user.uid)
             .collection("active_medications")
-            .get()
-            .addOnSuccessListener { activeSnap ->
+            .addSnapshotListener { snap, _ ->
+                if (snap != null) {
+                    selectedIds = snap.documents.mapNotNull {
+                        val name = it.getString("name")
+                        val dosage = it.getString("dosage")
+                        if (name != null && dosage != null) "$name|$dosage" else null
+                    }.toSet()
+                }
+            }
 
-                selectedIds = activeSnap.documents.mapNotNull {
-                    val name = it.getString("name")
-                    val dosage = it.getString("dosage")
-                    if (name != null && dosage != null) "$name|$dosage" else null
-                }.toSet()
+        // 🔥 ALL PRESCRIPTION MEDS (LIVE)
+        val recordsListener = db.collection("users")
+            .document(user.uid)
+            .collection("records")
+            .addSnapshotListener { recordSnap, _ ->
+                if (recordSnap != null) {
+                    val allMeds = mutableListOf<SelectableMed>()
 
-                // 2️⃣ Load all prescription meds
-                db.collection("users")
-                    .document(user.uid)
-                    .collection("records")
-                    .get()
-                    .addOnSuccessListener { recordSnap ->
+                    recordSnap.documents.forEach { doc ->
+                        val medicines =
+                            doc.get("medicines") as? List<Map<String, String>>
 
-                        val allMeds = mutableListOf<SelectableMed>()
-
-                        recordSnap.documents.forEach { doc ->
-                            val medicines =
-                                doc.get("medicines") as? List<Map<String, String>>
-
-                            medicines?.forEach {
-                                val name = it["name"]
-                                val dosage = it["dosage"]
-                                if (name != null && dosage != null) {
-                                    allMeds.add(
-                                        SelectableMed(
-                                            id = "$name|$dosage",
-                                            name = name,
-                                            dosage = dosage
-                                        )
+                        medicines?.forEach {
+                            val name = it["name"]
+                            val dosage = it["dosage"]
+                            if (name != null && dosage != null) {
+                                allMeds.add(
+                                    SelectableMed(
+                                        id = "$name|$dosage",
+                                        name = name,
+                                        dosage = dosage
                                     )
-                                }
+                                )
                             }
                         }
-
-                        meds = allMeds.distinctBy { it.id }
                     }
+
+                    meds = allMeds.distinctBy { it.id }
+                }
             }
+
+        onDispose {
+            activeListener.remove()
+            recordsListener.remove()
+        }
     }
 
+    // ---------------- UI ----------------
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Text(
-                        "Select Active Medicines",
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Select Active Medicines", fontWeight = FontWeight.Bold)
                 }
             )
         },
@@ -107,12 +110,11 @@ fun SelectMedicinesScreen(navController: NavController) {
                         .document(user.uid)
                         .collection("active_medications")
 
-                    // 🔥 Clear old
+                    // 🔥 Replace active meds atomically
                     activeRef.get()
                         .addOnSuccessListener { snap ->
                             snap.documents.forEach { it.reference.delete() }
 
-                            // 🔥 Save selected
                             selectedIds.forEach { id ->
                                 val parts = id.split("|")
                                 activeRef.add(

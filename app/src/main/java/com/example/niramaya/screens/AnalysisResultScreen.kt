@@ -25,38 +25,55 @@ import com.example.niramaya.data.*
 fun AnalysisResultScreen(
     navController: NavController
 ) {
-    // 🔥 RAW JSON FROM TEMP STORE
-    val rawJson = TempAnalysisStore.jsonResult ?: ""
+    // 🔥 RAW OCR / JSON RESULT
+    val rawText = TempAnalysisStore.jsonResult ?: ""
 
-    // 🧠 PARSE JSON SAFELY
-    val parsedResult = remember(rawJson) {
+    // 🧠 TRY PARSING AS PRESCRIPTION (SAFE)
+    val parsedPrescription = remember(rawText) {
         try {
-            val clean = rawJson
+            val clean = rawText
                 .replace("```json", "")
                 .replace("```", "")
                 .trim()
             parsePrescriptionJson(clean)
         } catch (e: Exception) {
-            PrescriptionResult()
+            null
         }
     }
 
-    // ✏️ EDITABLE STATE
-    var doctorName by remember { mutableStateOf(parsedResult.doctor) }
-    var visitDate by remember { mutableStateOf(parsedResult.date) }
+    // 🔎 DETECT RECORD TYPE
+    val recordType = if (
+        parsedPrescription != null &&
+        parsedPrescription.medicines.isNotEmpty()
+    ) {
+        RecordType.PRESCRIPTION
+    } else {
+        RecordType.OTHER
+    }
+
+    // ✏️ STATE
+    var title by remember {
+        mutableStateOf(
+            if (recordType == RecordType.PRESCRIPTION)
+                "Prescription"
+            else
+                "Medical Report"
+        )
+    }
+
     var personalNotes by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
 
     val medicines = remember {
         mutableStateListOf<MedicineEntry>().apply {
-            addAll(parsedResult.medicines)
+            parsedPrescription?.medicines?.let { addAll(it) }
         }
     }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Verify Details", fontWeight = FontWeight.Bold) },
+                title = { Text("Verify Extracted Data", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color(0xFFFDF8F5)
                 )
@@ -67,16 +84,14 @@ fun AnalysisResultScreen(
                 onClick = {
                     isSaving = true
 
-                    val finalResult = PrescriptionResult(
-                        doctor = doctorName,
-                        date = visitDate,
-                        diagnosis = parsedResult.diagnosis,
-                        medicines = medicines.toList(),
-                        personalNotes = personalNotes.trim()
-                    )
-
-                    FirestoreRepository.savePrescription(
-                        prescription = finalResult,
+                    FirestoreRepository.saveRecord(
+                        recordType = recordType,
+                        title = title,
+                        extractedText = rawText,
+                        medicines = if (recordType == RecordType.PRESCRIPTION)
+                            medicines.toList()
+                        else emptyList(),
+                        personalNotes = personalNotes.trim(),
                         onSuccess = {
                             TempAnalysisStore.jsonResult = null
                             isSaving = false
@@ -118,39 +133,28 @@ fun AnalysisResultScreen(
 
             item {
                 Text(
-                    "Check details extracted by AI. You can edit anything.",
+                    "Review what the AI extracted. Edit anything if needed.",
                     fontSize = 14.sp,
                     color = Color.Gray,
                     modifier = Modifier.padding(bottom = 20.dp)
                 )
 
                 OutlinedTextField(
-                    value = doctorName,
-                    onValueChange = { doctorName = it },
-                    label = { Text("Doctor Name") },
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Record Title") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                OutlinedTextField(
-                    value = visitDate,
-                    onValueChange = { visitDate = it },
-                    label = { Text("Date of Visit") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // 📝 PERSONAL NOTES (NEW)
                 OutlinedTextField(
                     value = personalNotes,
                     onValueChange = { personalNotes = it },
                     label = { Text("Personal Notes (Optional)") },
                     placeholder = {
-                        Text("Things the doctor said but didn’t write…")
+                        Text("Things you want to remember…")
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -159,30 +163,35 @@ fun AnalysisResultScreen(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
-
-                Text(
-                    "Medicines Found",
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0F3D6E)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(28.dp))
             }
 
-            itemsIndexed(medicines) { index, med ->
-                EditableMedCard(
-                    entry = med,
-                    onNameChange = {
-                        medicines[index] = medicines[index].copy(name = it)
-                    },
-                    onDosageChange = {
-                        medicines[index] = medicines[index].copy(dosage = it)
-                    }
-                )
+            // 💊 MEDICINES SECTION (ONLY IF PRESCRIPTION)
+            if (recordType == RecordType.PRESCRIPTION) {
+
+                item {
+                    Text(
+                        "Medicines Found",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F3D6E)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                itemsIndexed(medicines) { index, med ->
+                    EditableMedCard(
+                        entry = med,
+                        onNameChange = {
+                            medicines[index] = medicines[index].copy(name = it)
+                        },
+                        onDosageChange = {
+                            medicines[index] = medicines[index].copy(dosage = it)
+                        }
+                    )
+                }
             }
 
-            item { Spacer(modifier = Modifier.height(100.dp)) }
+            item { Spacer(modifier = Modifier.height(120.dp)) }
         }
     }
 }
@@ -210,13 +219,17 @@ fun EditableMedCard(
                 BasicTextField(
                     value = entry.name,
                     onValueChange = onNameChange,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Bold
+                    )
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 BasicTextField(
                     value = entry.dosage,
                     onValueChange = onDosageChange,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray)
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = Color.Gray
+                    )
                 )
             }
         }

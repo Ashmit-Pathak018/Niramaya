@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.*
@@ -20,7 +21,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,12 +30,13 @@ import com.example.niramaya.R
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(navController: NavController) {
 
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
-    val user = auth.currentUser
+    val user = auth.currentUser ?: return
 
     // ---------------- STATE ----------------
     var userName by remember { mutableStateOf("Patient") }
@@ -44,34 +45,37 @@ fun HomeScreen(navController: NavController) {
     var activeMeds by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var isMedsLoading by remember { mutableStateOf(true) }
 
-    // ---------------- FETCH USER + MEDS ----------------
-    LaunchedEffect(Unit) {
-        if (user != null) {
+    var showMedsSheet by remember { mutableStateOf(false) }
 
-            // 🔥 LIVE USER PROFILE
-            db.collection("users")
-                .document(user.uid)
-                .addSnapshotListener { doc, _ ->
-                    if (doc != null && doc.exists()) {
-                        userName = doc.getString("fullName") ?: userName
-                        userImageBase64 = doc.getString("profilePic") ?: ""
-                    }
-                }
+    // ---------------- LIVE LISTENERS ----------------
+    DisposableEffect(user.uid) {
 
-            // 🔥 LIVE ACTIVE MEDICATIONS
-            db.collection("users")
-                .document(user.uid)
-                .collection("active_medications")
-                .addSnapshotListener { snap, _ ->
-                    if (snap != null) {
-                        activeMeds = snap.documents.mapNotNull {
-                            val name = it.getString("name")
-                            val dosage = it.getString("dosage")
-                            if (name != null && dosage != null) name to dosage else null
-                        }
-                        isMedsLoading = false
-                    }
+        val userListener = db.collection("users")
+            .document(user.uid)
+            .addSnapshotListener { doc, _ ->
+                if (doc != null && doc.exists()) {
+                    userName = doc.getString("fullName") ?: userName
+                    userImageBase64 = doc.getString("profilePic") ?: ""
                 }
+            }
+
+        val medsListener = db.collection("users")
+            .document(user.uid)
+            .collection("active_medications")
+            .addSnapshotListener { snap, _ ->
+                if (snap != null) {
+                    activeMeds = snap.documents.mapNotNull {
+                        val name = it.getString("name")
+                        val dosage = it.getString("dosage")
+                        if (name != null && dosage != null) name to dosage else null
+                    }
+                    isMedsLoading = false
+                }
+            }
+
+        onDispose {
+            userListener.remove()
+            medsListener.remove()
         }
     }
 
@@ -91,7 +95,6 @@ fun HomeScreen(navController: NavController) {
     Scaffold(
         containerColor = Color(0xFFFDF8F5),
 
-        // FAB
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { navController.navigate("upload") },
@@ -105,7 +108,6 @@ fun HomeScreen(navController: NavController) {
         },
         floatingActionButtonPosition = FabPosition.Center,
 
-        // BOTTOM NAV
         bottomBar = {
             NavigationBar(
                 containerColor = Color.White,
@@ -129,11 +131,7 @@ fun HomeScreen(navController: NavController) {
                     selected = false,
                     onClick = { navController.navigate("schedule") },
                     icon = {
-                        Icon(
-                            imageVector = Icons.Default.DateRange,
-                            contentDescription = "Schedule",
-                            tint = Color.Gray
-                        )
+                        Icon(Icons.Default.DateRange, contentDescription = "Schedule", tint = Color.Gray)
                     }
                 )
 
@@ -205,21 +203,12 @@ fun HomeScreen(navController: NavController) {
                     Text(userName, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
 
-                Icon(
-                    imageVector = Icons.Default.Notifications,
-                    contentDescription = "Notifications",
-                    modifier = Modifier.size(28.dp)
-                )
+                Icon(Icons.Default.Notifications, contentDescription = "Notifications", modifier = Modifier.size(28.dp))
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                "Niramaya",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF0F3D6E)
-            )
+            Text("Niramaya", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F3D6E))
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -229,51 +218,53 @@ fun HomeScreen(navController: NavController) {
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF2F8)),
                 modifier = Modifier.fillMaxWidth().height(200.dp)
             ) {
-                Column(modifier = Modifier.padding(24.dp)) {
+                Box(modifier = Modifier.fillMaxSize()) {
 
-                    Text(
-                        "Current Medication",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF0F3D6E)
+                    // ✏️ EDIT BUTTON
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit Medications",
+                        tint = Color(0xFF0F3D6E),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp)
+                            .size(20.dp)
+                            .clickable { showMedsSheet = true }
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(modifier = Modifier.padding(24.dp)) {
 
-                    when {
-                        isMedsLoading -> {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                        }
+                        Text(
+                            "Current Medication",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF0F3D6E)
+                        )
 
-                        activeMeds.isEmpty() -> {
-                            Text("No active medications", color = Color.Gray, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                "Select medicines from prescriptions",
-                                color = Color(0xFF2196F3),
-                                fontSize = 13.sp,
-                                modifier = Modifier.clickable {
-                                    navController.navigate("select_medicines")
-                                }
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        else -> {
-                            activeMeds.take(3).forEach { (name, dosage) ->
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("•", fontSize = 24.sp, color = Color(0xFF0F3D6E))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("$name — $dosage", fontSize = 14.sp)
-                                }
+                        when {
+                            isMedsLoading -> {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
                             }
 
-                            if (activeMeds.size > 3) {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    "+${activeMeds.size - 3} more",
-                                    fontSize = 12.sp,
-                                    color = Color.Gray
-                                )
+                            activeMeds.isEmpty() -> {
+                                Text("No active medications", color = Color.Gray)
+                            }
+
+                            else -> {
+                                activeMeds.take(3).forEach { (name, dosage) ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("•", fontSize = 24.sp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("$name — $dosage", fontSize = 14.sp)
+                                    }
+                                }
+
+                                if (activeMeds.size > 3) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("+${activeMeds.size - 3} more", fontSize = 12.sp, color = Color.Gray)
+                                }
                             }
                         }
                     }
@@ -297,19 +288,8 @@ fun HomeScreen(navController: NavController) {
                         modifier = Modifier.padding(20.dp).fillMaxSize(),
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            "Next doctor visit",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF0F3D6E)
-                        )
-
-                        Text(
-                            "Check your schedule for upcoming appointments",
-                            fontSize = 13.sp,
-                            color = Color(0xFF0F3D6E)
-                        )
-
+                        Text("Next doctor visit", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("Check your schedule for upcoming appointments", fontSize = 13.sp)
                         Text(
                             "View Schedule →",
                             fontSize = 12.sp,
@@ -333,6 +313,50 @@ fun HomeScreen(navController: NavController) {
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(24.dp))
                 )
+            }
+        }
+    }
+
+    // ---------------- MEDICATION BOTTOM SHEET ----------------
+    if (showMedsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showMedsSheet = false },
+            containerColor = Color.White
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+
+                Text("Active Medications", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (activeMeds.isEmpty()) {
+                    Text("No active medications", color = Color.Gray)
+                } else {
+                    activeMeds.forEach { (name, dosage) ->
+                        Row(modifier = Modifier.padding(vertical = 6.dp)) {
+                            Text("•", fontSize = 24.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(name, fontWeight = FontWeight.Medium)
+                                Text(dosage, fontSize = 13.sp, color = Color.Gray)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = {
+                        showMedsSheet = false
+                        navController.navigate("select_medicines")
+                    },
+                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                ) {
+                    Text("Edit Active Medicines")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }

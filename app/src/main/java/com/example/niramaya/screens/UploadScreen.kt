@@ -47,7 +47,6 @@ fun UploadScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
 
     // --- STATE ---
-    val geminiManager = remember { GeminiManager() }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var isDocument by remember { mutableStateOf(false) }
     var fileName by remember { mutableStateOf("") }
@@ -208,13 +207,10 @@ fun UploadScreen(navController: NavController) {
         Button(
             enabled = selectedUri != null && !isAnalyzing,
             onClick = {
-                if (selectedUri == null) {
-                    Toast.makeText(context, "Please select a file first", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
+                if (selectedUri == null) return@Button
 
                 if (isDocument) {
-                    Toast.makeText(context, "PDF analysis coming soon. Use an image for demo.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "PDF analysis coming soon", Toast.LENGTH_SHORT).show()
                     return@Button
                 }
 
@@ -228,18 +224,17 @@ fun UploadScreen(navController: NavController) {
                                 return@launch
                             }
 
-                            val result = geminiManager.analyzePrescription(bitmap)
+                            val result = GeminiManager.analyzePrescription(bitmap)
+
                             if (result.isNullOrBlank()) {
                                 Toast.makeText(context, "AI could not extract data", Toast.LENGTH_SHORT).show()
                                 return@launch
                             }
 
-                            // ✅ SAFE HANDOFF
                             TempAnalysisStore.jsonResult = result
                             navController.navigate("analysis_result")
                         }
                     } catch (e: Exception) {
-                        e.printStackTrace()
                         Toast.makeText(context, e.message ?: "Processing failed", Toast.LENGTH_LONG).show()
                     } finally {
                         isAnalyzing = false

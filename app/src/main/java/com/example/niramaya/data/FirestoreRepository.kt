@@ -2,217 +2,156 @@ package com.example.niramaya.data
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FieldValue
+import com.google.firebase.Timestamp
 
 object FirestoreRepository {
 
-    // -----------------------------
-    // SAVE NEW PRESCRIPTION
-    // -----------------------------
-    fun savePrescription(
-        prescription: PrescriptionResult,
+    private fun userRecordsRef() =
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(
+                FirebaseAuth.getInstance().currentUser?.uid
+                    ?: throw Exception("User not logged in")
+            )
+            .collection("records")
+
+    // ─────────────────────────────────────────────
+    // SAVE RECORD (UNIVERSAL)
+    // ─────────────────────────────────────────────
+    fun saveRecord(
+        recordType: RecordType,
+        title: String,
+        extractedText: String,
+        medicines: List<MedicineEntry>,
+        personalNotes: String,
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        val user = FirebaseAuth.getInstance().currentUser
-            ?: return onFailure(Exception("User not logged in"))
-
-        val record = hashMapOf(
-            "type" to "Prescription",
-            "doctor" to prescription.doctor,
-            "date" to prescription.date,
-            "diagnosis" to prescription.diagnosis,
-            "medicines" to prescription.medicines.map {
-                mapOf(
-                    "name" to it.name,
-                    "dosage" to it.dosage
-                )
+        val data = hashMapOf(
+            "recordType" to recordType.name,
+            "title" to title,
+            "extractedText" to extractedText,
+            "personalNotes" to personalNotes,
+            "medicines" to medicines.map {
+                mapOf("name" to it.name, "dosage" to it.dosage)
             },
-            "personalNotes" to "",
-            "createdAt" to FieldValue.serverTimestamp()
+            "createdAt" to Timestamp.now()
         )
 
-        FirebaseFirestore.getInstance()
-            .collection("users")
-            .document(user.uid)
-            .collection("records")
-            .add(record)
+        userRecordsRef()
+            .add(data)
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { onFailure(it) }
     }
 
-    // -----------------------------
-    // FETCH HISTORY (ONE-TIME)
-    // -----------------------------
-    fun fetchHistory(
-        onSuccess: (List<HistoryRecord>) -> Unit,
-        onFailure: (Exception) -> Unit
-    ) {
-        val user = FirebaseAuth.getInstance().currentUser
-            ?: return onFailure(Exception("User not logged in"))
-
-        FirebaseFirestore.getInstance()
-            .collection("users")
-            .document(user.uid)
-            .collection("records")
-            .orderBy("createdAt")
-            .get()
-            .addOnSuccessListener { snapshot ->
-                val records = snapshot.documents.mapNotNull { doc ->
-                    val medicines =
-                        (doc.get("medicines") as? List<Map<String, String>>)
-                            ?.map {
-                                MedicineEntry(
-                                    name = it["name"] ?: "",
-                                    dosage = it["dosage"] ?: ""
-                                )
-                            } ?: emptyList()
-
-                    HistoryRecord(
-                        id = doc.id,
-                        doctor = doc.getString("doctor") ?: "",
-                        date = doc.getString("date") ?: "",
-                        type = doc.getString("type") ?: "Prescription",
-                        medicines = medicines,
-                        personalNotes = doc.getString("personalNotes") ?: ""
-                    )
-                }.reversed()
-
-                onSuccess(records)
-            }
-            .addOnFailureListener { onFailure(it) }
-    }
-
-    // -----------------------------
-    // LIVE LISTENER (DOCTOR VIEW)
-    // -----------------------------
+    // ─────────────────────────────────────────────
+    // LISTEN TO RECORDS (HISTORY / DOCTOR VIEW)
+    // ─────────────────────────────────────────────
     fun listenToRecords(
         onUpdate: (List<HistoryRecord>) -> Unit
     ) {
-        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-
-        FirebaseFirestore.getInstance()
-            .collection("users")
-            .document(userId)
-            .collection("records")
+        userRecordsRef()
             .orderBy("createdAt")
             .addSnapshotListener { snapshot, _ ->
                 if (snapshot == null) return@addSnapshotListener
 
-                val records = snapshot.documents.mapNotNull { doc ->
-                    val medicines =
-                        (doc.get("medicines") as? List<Map<String, String>>)
-                            ?.map {
-                                MedicineEntry(
-                                    name = it["name"] ?: "",
-                                    dosage = it["dosage"] ?: ""
-                                )
-                            } ?: emptyList()
-
-                    HistoryRecord(
-                        id = doc.id,
-                        doctor = doc.getString("doctor") ?: "",
-                        date = doc.getString("date") ?: "",
-                        type = doc.getString("type") ?: "Prescription",
-                        medicines = medicines,
-                        personalNotes = doc.getString("personalNotes") ?: ""
-                    )
+                val records = snapshot.documents.map { doc ->
+                    mapDocToHistoryRecord(doc)
                 }.reversed()
 
                 onUpdate(records)
             }
     }
 
-    // -----------------------------
+    // ─────────────────────────────────────────────
     // FETCH SINGLE RECORD
-    // -----------------------------
+    // ─────────────────────────────────────────────
     fun fetchRecordById(
         recordId: String,
-        onSuccess: (PrescriptionResult) -> Unit,
+        onSuccess: (HistoryRecord) -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        val user = FirebaseAuth.getInstance().currentUser
-            ?: return onFailure(Exception("Not logged in"))
-
-        FirebaseFirestore.getInstance()
-            .collection("users")
-            .document(user.uid)
-            .collection("records")
+        userRecordsRef()
             .document(recordId)
             .get()
             .addOnSuccessListener { doc ->
-                val medicines =
-                    (doc.get("medicines") as? List<Map<String, String>>)
-                        ?.map {
-                            MedicineEntry(
-                                name = it["name"] ?: "",
-                                dosage = it["dosage"] ?: ""
-                            )
-                        } ?: emptyList()
-
-                onSuccess(
-                    PrescriptionResult(
-                        doctor = doc.getString("doctor") ?: "",
-                        date = doc.getString("date") ?: "",
-                        diagnosis = doc.getString("diagnosis") ?: "",
-                        medicines = medicines
-                    )
-                )
+                onSuccess(mapDocToHistoryRecord(doc))
             }
             .addOnFailureListener { onFailure(it) }
     }
 
-    // -----------------------------
-    // UPDATE EXISTING RECORD
-    // -----------------------------
-    fun updatePrescription(
+    // ─────────────────────────────────────────────
+    // UPDATE RECORD
+    // ─────────────────────────────────────────────
+    fun updateRecord(
         recordId: String,
-        prescription: PrescriptionResult,
+        title: String,
+        extractedText: String,
+        medicines: List<MedicineEntry>,
+        personalNotes: String,
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        val user = FirebaseAuth.getInstance().currentUser
-            ?: return onFailure(Exception("User not logged in"))
-
-        val updatedData = hashMapOf(
-            "doctor" to prescription.doctor,
-            "date" to prescription.date,
-            "diagnosis" to prescription.diagnosis,
-            "medicines" to prescription.medicines.map {
-                mapOf(
-                    "name" to it.name,
-                    "dosage" to it.dosage
-                )
+        val update = hashMapOf(
+            "title" to title,
+            "extractedText" to extractedText,
+            "personalNotes" to personalNotes,
+            "medicines" to medicines.map {
+                mapOf("name" to it.name, "dosage" to it.dosage)
             }
         )
 
-        FirebaseFirestore.getInstance()
-            .collection("users")
-            .document(user.uid)
-            .collection("records")
+        userRecordsRef()
             .document(recordId)
-            .update(updatedData)
+            .update(update)
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { onFailure(it) }
     }
 
-    // -----------------------------
+    // ─────────────────────────────────────────────
     // DELETE RECORD
-    // -----------------------------
+    // ─────────────────────────────────────────────
     fun deleteRecord(
         recordId: String,
         onSuccess: () -> Unit,
-        onFailure: () -> Unit
+        onFailure: (Exception) -> Unit
     ) {
-        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-
-        FirebaseFirestore.getInstance()
-            .collection("users")
-            .document(userId)
-            .collection("records")
+        userRecordsRef()
             .document(recordId)
             .delete()
             .addOnSuccessListener { onSuccess() }
-            .addOnFailureListener { onFailure() }
+            .addOnFailureListener { onFailure(it) }
+    }
+
+    // ─────────────────────────────────────────────
+    // INTERNAL MAPPER (SAFE)
+    // ─────────────────────────────────────────────
+    private fun mapDocToHistoryRecord(
+        doc: com.google.firebase.firestore.DocumentSnapshot
+    ): HistoryRecord {
+
+        val medicines =
+            (doc.get("medicines") as? List<Map<String, String>>)
+                ?.map {
+                    MedicineEntry(
+                        name = it["name"] ?: "",
+                        dosage = it["dosage"] ?: ""
+                    )
+                } ?: emptyList()
+
+        val createdAtMillis =
+            (doc.get("createdAt") as? Timestamp)?.toDate()?.time ?: 0L
+
+        return HistoryRecord(
+            id = doc.id,
+            title = doc.getString("title") ?: "Medical Record",
+            recordType = RecordType.valueOf(
+                doc.getString("recordType") ?: "OTHER"
+            ),
+            createdAt = createdAtMillis,
+            extractedText = doc.getString("extractedText") ?: "",
+            medicines = medicines,
+            personalNotes = doc.getString("personalNotes") ?: ""
+        )
     }
 }

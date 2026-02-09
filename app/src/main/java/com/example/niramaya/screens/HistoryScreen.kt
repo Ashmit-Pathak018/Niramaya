@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -28,18 +29,14 @@ fun HistoryScreen(navController: NavController) {
 
     var records by remember { mutableStateOf<List<HistoryRecord>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var recordToDelete by remember { mutableStateOf<HistoryRecord?>(null) }
 
-    // --- FETCH DATA ---
+    // 🔥 LIVE HISTORY (NO CHANGE)
     LaunchedEffect(Unit) {
-        FirestoreRepository.fetchHistory(
-            onSuccess = {
-                records = it
-                isLoading = false
-            },
-            onFailure = {
-                isLoading = false
-            }
-        )
+        FirestoreRepository.listenToRecords {
+            records = it
+            isLoading = false
+        }
     }
 
     Column(
@@ -48,7 +45,8 @@ fun HistoryScreen(navController: NavController) {
             .background(Color(0xFFFDF8F5))
             .padding(24.dp)
     ) {
-        // HEADER
+
+        // ─── HEADER ───
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -69,7 +67,7 @@ fun HistoryScreen(navController: NavController) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // SEARCH (visual only)
+        // ─── SEARCH (UI ONLY) ───
         OutlinedTextField(
             value = "",
             onValueChange = {},
@@ -103,36 +101,80 @@ fun HistoryScreen(navController: NavController) {
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(records) { record ->
-                        HistoryItem(record) {
-                            navController.navigate("record_detail/${record.id}")
-                        }
-
+                        HistoryItem(
+                            record = record,
+                            onOpen = {
+                                navController.navigate("record_detail/${record.id}")
+                            },
+                            onDelete = {
+                                recordToDelete = record
+                            }
+                        )
                     }
                 }
             }
         }
     }
-}
 
+    // ─── DELETE CONFIRMATION DIALOG ───
+    recordToDelete?.let { record ->
+        AlertDialog(
+            onDismissRequest = { recordToDelete = null },
+            title = {
+                Text("Delete Record?")
+            },
+            text = {
+                Text("This action cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        FirestoreRepository.deleteRecord(
+                            recordId = record.id,
+                            onSuccess = {
+                                recordToDelete = null
+                            },
+                            onFailure = { exception ->
+                                exception.printStackTrace()
+                                recordToDelete = null
+                            }
+                        )
+                    }
+                ) {
+                    Text("Delete", color = Color.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { recordToDelete = null }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
 
 @Composable
 fun HistoryItem(
     record: HistoryRecord,
-    onClick: () -> Unit
-)
- {
+    onOpen: () -> Unit,
+    onDelete: () -> Unit
+) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }, // ✅ CLICKABLE
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .padding(16.dp)
+                .clickable { onOpen() },
             verticalAlignment = Alignment.CenterVertically
         ) {
+
+            // ─── ICON ───
             Box(
                 modifier = Modifier
                     .size(50.dp)
@@ -148,25 +190,42 @@ fun HistoryItem(
 
             Spacer(modifier = Modifier.width(16.dp))
 
+            // ─── CONTENT ───
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = record.type,
+                    text = record.recordType.name.replace("_", " "),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2196F3)
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = record.title,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 Text(
-                    text = record.doctor,
-                    fontSize = 14.sp,
+                    text = record.extractedText
+                        .take(60)
+                        .ifBlank { "No extracted text" } + "…",
+                    fontSize = 13.sp,
                     color = Color.Gray
                 )
             }
 
-            Text(
-                text = record.date,
-                fontSize = 12.sp,
-                color = Color(0xFF0F3D6E),
-                fontWeight = FontWeight.Medium
-            )
+            // 🗑 DELETE BUTTON
+            IconButton(onClick = onDelete) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = Color.Red
+                )
+            }
         }
     }
 }
