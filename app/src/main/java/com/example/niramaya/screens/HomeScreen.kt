@@ -1,5 +1,7 @@
 package com.example.niramaya.screens
 
+import android.graphics.BitmapFactory
+import android.util.Base64
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -35,6 +38,7 @@ fun HomeScreen(navController: NavController) {
     // --- STATE VARIABLES ---
     var userName by remember { mutableStateOf("Patient") }
     var greeting by remember { mutableStateOf("Hi, Welcome Back") }
+    var userImageBase64 by remember { mutableStateOf("") } // Store image string
 
     // --- FETCH DATA ---
     LaunchedEffect(Unit) {
@@ -48,32 +52,48 @@ fun HomeScreen(navController: NavController) {
                         if (!fullName.isNullOrEmpty()) {
                             userName = fullName
                         }
+                        // Fetch the image string
+                        userImageBase64 = document.getString("profilePic") ?: ""
                     }
                 }
         }
     }
 
+    // --- DECODE IMAGE LOGIC ---
+    val profileBitmap = remember(userImageBase64) {
+        if (userImageBase64.isNotEmpty()) {
+            try {
+                val decodedBytes = Base64.decode(userImageBase64, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
     // --- UI STRUCTURE (SCAFFOLD) ---
     Scaffold(
-        containerColor = Color(0xFFFDF8F5), // Your Cream Background
+        containerColor = Color(0xFFFDF8F5), // Cream Background
 
-        // 1. FLOATING ACTION BUTTON (The Blue Upload Button)
+        // 1. FLOATING ACTION BUTTON
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { Toast.makeText(context, "Upload Coming Soon", Toast.LENGTH_SHORT).show() },
-                containerColor = Color(0xFF2196F3), // Bright Blue
+                onClick = { navController.navigate("upload") }, // Goes to Upload Screen
+                containerColor = Color(0xFF2196F3),
                 contentColor = Color.White,
                 shape = CircleShape,
-                modifier = Modifier.size(65.dp).offset(y = (-10).dp) // Move it up slightly
+                modifier = Modifier.size(65.dp).offset(y = (-10).dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Upload, // Or use a specific upload icon if you have one
+                    imageVector = Icons.Default.Upload,
                     contentDescription = "Upload",
                     modifier = Modifier.size(32.dp)
                 )
             }
         },
-        floatingActionButtonPosition = FabPosition.Center, // Puts it in the middle
+        floatingActionButtonPosition = FabPosition.Center,
 
         // 2. BOTTOM NAVIGATION BAR
         bottomBar = {
@@ -99,10 +119,10 @@ fun HomeScreen(navController: NavController) {
                         Icon(imageVector = Icons.Default.DateRange, contentDescription = "Schedule", tint = Color.Gray)
                     }
                 )
-                // Profile Item (UPDATED: Now goes to User Interface Menu)
+                // Profile Item (Goes to Menu)
                 NavigationBarItem(
                     selected = false,
-                    onClick = { navController.navigate("user_interface") }, // <--- CHANGED THIS
+                    onClick = { navController.navigate("user_interface") },
                     icon = {
                         Icon(painter = painterResource(id = R.drawable.profile), contentDescription = "Profile", modifier = Modifier.size(24.dp), tint = Color.Gray)
                     }
@@ -112,7 +132,7 @@ fun HomeScreen(navController: NavController) {
                     selected = false,
                     onClick = { Toast.makeText(context, "History Clicked", Toast.LENGTH_SHORT).show() },
                     icon = {
-                        Icon(painter = painterResource(id = R.drawable.outline_archive_24), contentDescription = "History", modifier = Modifier.size(24.dp), tint = Color.Gray)
+                        Icon(painter = painterResource(id = R.drawable.history), contentDescription = "History", modifier = Modifier.size(24.dp), tint = Color.Gray)
                     }
                 )
             }
@@ -123,7 +143,7 @@ fun HomeScreen(navController: NavController) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues) // Respects the bottom bar space
+                .padding(paddingValues)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
             // 3. HEADER ROW
@@ -131,17 +151,30 @@ fun HomeScreen(navController: NavController) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Profile Pic (UPDATED: Now goes to User Interface Menu)
-                Image(
-                    painter = painterResource(id = R.drawable.ic_launcher_foreground), // Replace if you have a real user pic
-                    contentDescription = "Profile",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .background(Color.LightGray)
-                        .clickable { navController.navigate("user_interface") } // <--- CHANGED THIS
-                )
+                // PROFILE PIC (Dynamic)
+                if (profileBitmap != null) {
+                    Image(
+                        bitmap = profileBitmap.asImageBitmap(),
+                        contentDescription = "Profile",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .clickable { navController.navigate("user_interface") }
+                    )
+                } else {
+                    // Placeholder if no image found
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                        contentDescription = "Profile",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(Color.LightGray)
+                            .clickable { navController.navigate("user_interface") }
+                    )
+                }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
@@ -171,8 +204,8 @@ fun HomeScreen(navController: NavController) {
 
             // 4. CURRENT MEDICATION CARD
             Card(
-                shape = RoundedCornerShape(32.dp), // Extra rounded corners as per design
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF2F8)), // Light Blue
+                shape = RoundedCornerShape(32.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF2F8)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
@@ -185,7 +218,6 @@ fun HomeScreen(navController: NavController) {
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    // The Blue Dot & Text
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("•", color = Color(0xFF0F3D6E), fontSize = 40.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -239,9 +271,9 @@ fun HomeScreen(navController: NavController) {
                     contentAlignment = Alignment.BottomCenter
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.doctorview), // YOUR SVG/PNG IMAGE
+                        painter = painterResource(id = R.drawable.doctorview), // Uses your PNG/XML
                         contentDescription = "Doctor Illustration",
-                        contentScale = ContentScale.Fit, // Fits the image nicely
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

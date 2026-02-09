@@ -1,12 +1,13 @@
 package com.example.niramaya.screens
 
+import android.graphics.BitmapFactory
+import android.util.Base64
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -22,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -37,15 +39,32 @@ import com.google.firebase.firestore.FirebaseFirestore
 fun UserInterfacePage(navController: NavController) {
     val auth = FirebaseAuth.getInstance()
     var userName by remember { mutableStateOf("Loading...") }
+    var userImageBase64 by remember { mutableStateOf("") }
 
-    // Fetch Name for the Header
+    // --- FETCH DATA FROM FIRESTORE ---
     LaunchedEffect(Unit) {
         val user = auth.currentUser
         if (user != null) {
             FirebaseFirestore.getInstance().collection("users").document(user.uid).get()
                 .addOnSuccessListener {
                     userName = it.getString("fullName") ?: "User"
+                    // Get the saved image string
+                    userImageBase64 = it.getString("profilePic") ?: ""
                 }
+        }
+    }
+
+    // --- DECODE IMAGE LOGIC ---
+    val profileBitmap = remember(userImageBase64) {
+        if (userImageBase64.isNotEmpty()) {
+            try {
+                val decodedBytes = Base64.decode(userImageBase64, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
         }
     }
 
@@ -83,16 +102,29 @@ fun UserInterfacePage(navController: NavController) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(contentAlignment = Alignment.BottomEnd) {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_launcher_foreground), // Replace with real pic if you have one
-                    contentDescription = "Profile Pic",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clip(CircleShape)
-                        .background(Color.Gray)
-                )
-                // Edit Pencil Circle
+                // Display Bitmap if it exists, otherwise Placeholder
+                if (profileBitmap != null) {
+                    Image(
+                        bitmap = profileBitmap.asImageBitmap(),
+                        contentDescription = "Profile Pic",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                    )
+                } else {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                        contentDescription = "Profile Pic",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(Color.Gray)
+                    )
+                }
+
+                // Edit Pencil Circle (Visual only here, clicking opens menu)
                 Box(
                     modifier = Modifier
                         .size(28.dp)
@@ -102,7 +134,9 @@ fun UserInterfacePage(navController: NavController) {
                     Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color.White)
                 }
             }
+
             Spacer(modifier = Modifier.height(16.dp))
+
             Text(
                 text = userName,
                 fontSize = 20.sp,
@@ -114,35 +148,36 @@ fun UserInterfacePage(navController: NavController) {
         Spacer(modifier = Modifier.height(40.dp))
 
         // 3. The Menu List
-        // A. Profile -> Goes to your EXISTING form (ProfileScreen)
+
+        // A. Profile -> Goes to the EDIT FORM
         MenuOptionItem(
             icon = Icons.Default.PersonOutline,
             text = "Profile",
-            onClick = { navController.navigate("profile") }
+            onClick = { navController.navigate("profile") } // Takes you to EditProfileScreen
         )
 
-        // B. Important -> Placeholder
+        // B. Important
         MenuOptionItem(
             icon = Icons.Default.FavoriteBorder,
             text = "Important",
             onClick = { Toast.makeText(navController.context, "Important Clicked", Toast.LENGTH_SHORT).show() }
         )
 
-        // C. Settings -> Placeholder
+        // C. Settings
         MenuOptionItem(
             icon = Icons.Default.Settings,
             text = "Settings",
             onClick = { Toast.makeText(navController.context, "Settings Clicked", Toast.LENGTH_SHORT).show() }
         )
 
-        // D. Help -> Placeholder
+        // D. Help
         MenuOptionItem(
             icon = Icons.Default.HelpOutline,
             text = "Help",
             onClick = { Toast.makeText(navController.context, "Help Clicked", Toast.LENGTH_SHORT).show() }
         )
 
-        // E. Logout -> Actually logs out
+        // E. Logout
         MenuOptionItem(
             icon = Icons.AutoMirrored.Filled.ExitToApp,
             text = "Logout",
@@ -157,7 +192,7 @@ fun UserInterfacePage(navController: NavController) {
     }
 }
 
-// Helper to draw each row neatly
+// --- Helper Composable for Menu Rows ---
 @Composable
 fun MenuOptionItem(
     icon: ImageVector,

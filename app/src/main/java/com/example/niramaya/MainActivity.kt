@@ -7,9 +7,11 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.niramaya.screens.AnalysisResultScreen
 import com.example.niramaya.screens.HomeScreen
 import com.example.niramaya.screens.LoginScreen
 import com.example.niramaya.screens.ProfileScreen
+import com.example.niramaya.screens.UploadScreen
 import com.example.niramaya.screens.UserInterfacePage
 import com.google.firebase.auth.FirebaseAuth
 
@@ -55,6 +57,13 @@ fun NiramayaApp(startDestination: String) {
         // Screen 4: Profile Form (The Editing Screen)
         composable("profile") {
             ProfileScreen(navController)
+        }
+        composable("upload") {
+            UploadScreen(navController)
+        }
+
+        composable("analysis_result") {
+            AnalysisResultScreen(navController)
         }
     }
 }
