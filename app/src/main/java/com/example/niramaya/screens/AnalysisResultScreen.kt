@@ -25,31 +25,26 @@ import com.example.niramaya.data.*
 fun AnalysisResultScreen(
     navController: NavController
 ) {
-    // --- FETCH RAW JSON FROM MEMORY ---
+    // 🔥 RAW JSON FROM TEMP STORE
     val rawJson = TempAnalysisStore.jsonResult ?: ""
 
-    // --- PARSE JSON SAFELY ---
-    val parsedResult: PrescriptionResult = remember(rawJson) {
+    // 🧠 PARSE JSON SAFELY
+    val parsedResult = remember(rawJson) {
         try {
-            val cleanJson = rawJson
+            val clean = rawJson
                 .replace("```json", "")
                 .replace("```", "")
                 .trim()
-
-            parsePrescriptionJson(cleanJson)
+            parsePrescriptionJson(clean)
         } catch (e: Exception) {
-            PrescriptionResult(
-                doctor = "",
-                date = "",
-                diagnosis = "",
-                medicines = emptyList()
-            )
+            PrescriptionResult()
         }
     }
 
-    // --- EDITABLE STATE ---
+    // ✏️ EDITABLE STATE
     var doctorName by remember { mutableStateOf(parsedResult.doctor) }
     var visitDate by remember { mutableStateOf(parsedResult.date) }
+    var personalNotes by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
 
     val medicines = remember {
@@ -69,16 +64,16 @@ fun AnalysisResultScreen(
         },
         bottomBar = {
             Button(
-                enabled = !isSaving,
                 onClick = {
+                    isSaving = true
+
                     val finalResult = PrescriptionResult(
                         doctor = doctorName,
                         date = visitDate,
                         diagnosis = parsedResult.diagnosis,
-                        medicines = medicines.toList()
+                        medicines = medicines.toList(),
+                        personalNotes = personalNotes.trim()
                     )
-
-                    isSaving = true
 
                     FirestoreRepository.savePrescription(
                         prescription = finalResult,
@@ -94,6 +89,7 @@ fun AnalysisResultScreen(
                         }
                     )
                 },
+                enabled = !isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp)
@@ -102,22 +98,16 @@ fun AnalysisResultScreen(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 if (isSaving) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
                 } else {
                     Icon(Icons.Default.Check, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "Confirm & Save to Record",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Confirm & Save", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
     ) { padding ->
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -128,7 +118,7 @@ fun AnalysisResultScreen(
 
             item {
                 Text(
-                    "Please check the info extracted by AI. Tap any field to edit.",
+                    "Check details extracted by AI. You can edit anything.",
                     fontSize = 14.sp,
                     color = Color.Gray,
                     modifier = Modifier.padding(bottom = 20.dp)
@@ -152,10 +142,27 @@ fun AnalysisResultScreen(
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 📝 PERSONAL NOTES (NEW)
+                OutlinedTextField(
+                    value = personalNotes,
+                    onValueChange = { personalNotes = it },
+                    label = { Text("Personal Notes (Optional)") },
+                    placeholder = {
+                        Text("Things the doctor said but didn’t write…")
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    maxLines = 5,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Text(
-                    "Medicines Found:",
+                    "Medicines Found",
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF0F3D6E)
                 )
@@ -167,19 +174,15 @@ fun AnalysisResultScreen(
                 EditableMedCard(
                     entry = med,
                     onNameChange = {
-                        medicines[index] =
-                            medicines[index].copy(name = it)
+                        medicines[index] = medicines[index].copy(name = it)
                     },
                     onDosageChange = {
-                        medicines[index] =
-                            medicines[index].copy(dosage = it)
+                        medicines[index] = medicines[index].copy(dosage = it)
                     }
                 )
             }
 
-            item {
-                Spacer(modifier = Modifier.height(100.dp))
-            }
+            item { Spacer(modifier = Modifier.height(100.dp)) }
         }
     }
 }
@@ -201,31 +204,19 @@ fun EditableMedCard(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                Icons.Default.Medication,
-                contentDescription = null,
-                tint = Color(0xFF0F3D6E)
-            )
-
+            Icon(Icons.Default.Medication, contentDescription = null)
             Spacer(modifier = Modifier.width(16.dp))
-
             Column {
                 BasicTextField(
                     value = entry.name,
                     onValueChange = onNameChange,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Bold
-                    )
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
                 )
-
                 Spacer(modifier = Modifier.height(4.dp))
-
                 BasicTextField(
                     value = entry.dosage,
                     onValueChange = onDosageChange,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        color = Color.Gray
-                    )
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray)
                 )
             }
         }

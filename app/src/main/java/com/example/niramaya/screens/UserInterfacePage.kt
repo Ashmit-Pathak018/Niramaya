@@ -2,7 +2,6 @@ package com.example.niramaya.screens
 
 import android.graphics.BitmapFactory
 import android.util.Base64
-import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,9 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -45,16 +42,18 @@ fun UserInterfacePage(navController: NavController) {
     LaunchedEffect(Unit) {
         val user = auth.currentUser
         if (user != null) {
-            FirebaseFirestore.getInstance().collection("users").document(user.uid).get()
+            FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(user.uid)
+                .get()
                 .addOnSuccessListener {
                     userName = it.getString("fullName") ?: "User"
-                    // Get the saved image string
                     userImageBase64 = it.getString("profilePic") ?: ""
                 }
         }
     }
 
-    // --- DECODE IMAGE LOGIC ---
+    // --- DECODE IMAGE ---
     val profileBitmap = remember(userImageBase64) {
         if (userImageBase64.isNotEmpty()) {
             try {
@@ -63,9 +62,7 @@ fun UserInterfacePage(navController: NavController) {
             } catch (e: Exception) {
                 null
             }
-        } else {
-            null
-        }
+        } else null
     }
 
     Column(
@@ -74,7 +71,8 @@ fun UserInterfacePage(navController: NavController) {
             .background(Color(0xFFFDF8F5))
             .padding(24.dp)
     ) {
-        // 1. Header Row
+
+        // HEADER
         Box(modifier = Modifier.fillMaxWidth()) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -96,43 +94,30 @@ fun UserInterfacePage(navController: NavController) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // 2. Big Profile Pic & Name
+        // PROFILE IMAGE + NAME
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(contentAlignment = Alignment.BottomEnd) {
-                // Display Bitmap if it exists, otherwise Placeholder
-                if (profileBitmap != null) {
-                    Image(
-                        bitmap = profileBitmap.asImageBitmap(),
-                        contentDescription = "Profile Pic",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(100.dp)
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                        contentDescription = "Profile Pic",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(100.dp)
-                            .clip(CircleShape)
-                            .background(Color.Gray)
-                    )
-                }
-
-                // Edit Pencil Circle (Visual only here, clicking opens menu)
-                Box(
+            if (profileBitmap != null) {
+                Image(
+                    bitmap = profileBitmap.asImageBitmap(),
+                    contentDescription = "Profile Pic",
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .size(28.dp)
-                        .background(Color(0xFF0F3D6E), CircleShape)
-                        .padding(6.dp)
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color.White)
-                }
+                        .size(100.dp)
+                        .clip(CircleShape)
+                )
+            } else {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                    contentDescription = "Profile Pic",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(100.dp)
+                        .clip(CircleShape)
+                        .background(Color.Gray)
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -147,37 +132,25 @@ fun UserInterfacePage(navController: NavController) {
 
         Spacer(modifier = Modifier.height(40.dp))
 
-        // 3. The Menu List
-
-        // A. Profile -> Goes to the EDIT FORM
+        // MENU OPTIONS
         MenuOptionItem(
             icon = Icons.Default.PersonOutline,
             text = "Profile",
-            onClick = { navController.navigate("profile") } // Takes you to EditProfileScreen
+            onClick = { navController.navigate("profile_update") }
         )
 
-        // B. Important
         MenuOptionItem(
             icon = Icons.Default.FavoriteBorder,
             text = "Important",
-            onClick = { Toast.makeText(navController.context, "Important Clicked", Toast.LENGTH_SHORT).show() }
+            onClick = { navController.navigate("important") }
         )
 
-        // C. Settings
         MenuOptionItem(
             icon = Icons.Default.Settings,
             text = "Settings",
-            onClick = { Toast.makeText(navController.context, "Settings Clicked", Toast.LENGTH_SHORT).show() }
+            onClick = { navController.navigate("settings") }
         )
 
-        // D. Help
-        MenuOptionItem(
-            icon = Icons.Default.HelpOutline,
-            text = "Help",
-            onClick = { Toast.makeText(navController.context, "Help Clicked", Toast.LENGTH_SHORT).show() }
-        )
-
-        // E. Logout
         MenuOptionItem(
             icon = Icons.AutoMirrored.Filled.ExitToApp,
             text = "Logout",
@@ -192,7 +165,7 @@ fun UserInterfacePage(navController: NavController) {
     }
 }
 
-// --- Helper Composable for Menu Rows ---
+// --- MENU ITEM ---
 @Composable
 fun MenuOptionItem(
     icon: ImageVector,
@@ -207,11 +180,10 @@ fun MenuOptionItem(
             .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Icon Circle
         Box(
             modifier = Modifier
                 .size(45.dp)
-                .background(Color(0xFFEAF2F8), CircleShape), // Light Blue Circle
+                .background(Color(0xFFEAF2F8), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -224,16 +196,14 @@ fun MenuOptionItem(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // Text
         Text(
             text = text,
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
-            color = if (isDestructive) Color.Red else Color.Black,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            color = if (isDestructive) Color.Red else Color.Black
         )
 
-        // Arrow
         Icon(
             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
             contentDescription = null,

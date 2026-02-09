@@ -55,67 +55,53 @@ fun NiramayaApp(startDestination: String) {
         startDestination = startDestination
     ) {
 
-        // Login
-        composable("login") {
-            LoginScreen(navController)
-        }
+        // --- YOUR EXISTING ROUTES (UNCHANGED) ---
 
-        // Home
-        composable("home") {
-            HomeScreen(navController)
-        }
+        composable("login") { LoginScreen(navController) }
 
-        // User Menu
-        composable("user_interface") {
-            UserInterfacePage(navController)
-        }
+        composable("home") { HomeScreen(navController) }
 
-        // Profile
-        composable("profile") {
-            ProfileScreen(navController)
-        }
+        // This remains your original User Interface Page
+        composable("user_interface") { UserInterfacePage(navController) }
 
-        // Upload
-        composable("upload") {
-            UploadScreen(navController)
-        }
+        // This remains your original Profile Route
+        composable("profile") { ProfileScreen(navController) }
 
-        // Analysis (uses TempAnalysisStore, no args)
-        composable("analysis_result") {
-            AnalysisResultScreen(navController)
-        }
+        composable("upload") { UploadScreen(navController) }
 
-        composable("doctor_view") {
-            DoctorViewScreen(navController)
+        composable("analysis_result") { AnalysisResultScreen(navController) }
+
+
+
+        composable("emergency_qr") { EmergencyQRScreen(navController) }
+
+        composable("history") { HistoryScreen(navController) }
+        // Inside MainActivity.kt -> NavHost { ... }
+
+        composable("schedule") { DoctorViewScreen(navController) }
+
+        composable("select_medicines") {
+            SelectMedicinesScreen(navController)
         }
 
 
-        // Emergency QR
-        composable("emergency_qr") {
-            EmergencyQRScreen(navController)
-        }
-
-        // History
-        composable("history") {
-            HistoryScreen(navController)
-        }
-
-        // ✅ Record Detail (EDIT EXISTING RECORD)
         composable(
             route = "record_detail/{recordId}",
-            arguments = listOf(
-                navArgument("recordId") {
-                    type = NavType.StringType
-                }
-            )
+            arguments = listOf(navArgument("recordId") { type = NavType.StringType })
         ) { backStackEntry ->
-            val recordId =
-                backStackEntry.arguments?.getString("recordId") ?: return@composable
-
-            RecordDetailScreen(
-                navController = navController,
-                recordId = recordId
-            )
+            val recordId = backStackEntry.arguments?.getString("recordId") ?: return@composable
+            RecordDetailScreen(navController = navController, recordId = recordId)
         }
+
+        // --- NEW FEATURES ADDED (EXTRA ROUTES) ---
+
+        // 1. Settings Screen
+        composable("settings") { SettingsScreen(navController) }
+
+        // 2. Important / Medical ID Screen
+        composable("important") { ImportantScreen(navController) }
+
+        // 3. Profile Update / Edit Screen
+        composable("profile_update") { ProfileUpdateScreen(navController) }
     }
 }

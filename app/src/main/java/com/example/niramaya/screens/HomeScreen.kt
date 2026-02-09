@@ -2,7 +2,6 @@ package com.example.niramaya.screens
 
 import android.graphics.BitmapFactory
 import android.util.Base64
-import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,43 +32,66 @@ import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
 fun HomeScreen(navController: NavController) {
-    val context = LocalContext.current
 
+    val auth = FirebaseAuth.getInstance()
+    val db = FirebaseFirestore.getInstance()
+    val user = auth.currentUser
+
+    // ---------------- STATE ----------------
     var userName by remember { mutableStateOf("Patient") }
-    var greeting by remember { mutableStateOf("Hi, Welcome Back") }
     var userImageBase64 by remember { mutableStateOf("") }
 
-    // --- FETCH USER DATA ---
+    var activeMeds by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var isMedsLoading by remember { mutableStateOf(true) }
+
+    // ---------------- FETCH USER + MEDS ----------------
     LaunchedEffect(Unit) {
-        val user = FirebaseAuth.getInstance().currentUser
         if (user != null) {
-            FirebaseFirestore.getInstance()
-                .collection("users")
+
+            // 🔥 LIVE USER PROFILE
+            db.collection("users")
                 .document(user.uid)
-                .get()
-                .addOnSuccessListener { document ->
-                    userName = document.getString("fullName") ?: userName
-                    userImageBase64 = document.getString("profilePic") ?: ""
+                .addSnapshotListener { doc, _ ->
+                    if (doc != null && doc.exists()) {
+                        userName = doc.getString("fullName") ?: userName
+                        userImageBase64 = doc.getString("profilePic") ?: ""
+                    }
+                }
+
+            // 🔥 LIVE ACTIVE MEDICATIONS
+            db.collection("users")
+                .document(user.uid)
+                .collection("active_medications")
+                .addSnapshotListener { snap, _ ->
+                    if (snap != null) {
+                        activeMeds = snap.documents.mapNotNull {
+                            val name = it.getString("name")
+                            val dosage = it.getString("dosage")
+                            if (name != null && dosage != null) name to dosage else null
+                        }
+                        isMedsLoading = false
+                    }
                 }
         }
     }
 
-    // --- DECODE PROFILE IMAGE ---
+    // ---------------- PROFILE IMAGE ----------------
     val profileBitmap = remember(userImageBase64) {
         try {
             if (userImageBase64.isNotEmpty()) {
-                val decoded = Base64.decode(userImageBase64, Base64.DEFAULT)
-                BitmapFactory.decodeByteArray(decoded, 0, decoded.size)
+                val bytes = Base64.decode(userImageBase64, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             } else null
         } catch (e: Exception) {
             null
         }
     }
 
+    // ---------------- UI ----------------
     Scaffold(
         containerColor = Color(0xFFFDF8F5),
 
-        // ➕ FAB (Upload)
+        // FAB
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { navController.navigate("upload") },
@@ -83,7 +105,7 @@ fun HomeScreen(navController: NavController) {
         },
         floatingActionButtonPosition = FabPosition.Center,
 
-        // 🔻 BOTTOM NAV BAR
+        // BOTTOM NAV
         bottomBar = {
             NavigationBar(
                 containerColor = Color.White,
@@ -91,7 +113,6 @@ fun HomeScreen(navController: NavController) {
                 modifier = Modifier.height(80.dp)
             ) {
 
-                // Home
                 NavigationBarItem(
                     selected = true,
                     onClick = {},
@@ -101,28 +122,21 @@ fun HomeScreen(navController: NavController) {
                             contentDescription = "Home",
                             modifier = Modifier.size(24.dp)
                         )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = Color(0xFFE3F2FD)
-                    )
+                    }
                 )
 
-                // ✅ SCHEDULE → DOCTOR VIEW (PERSISTENT MEMORY)
                 NavigationBarItem(
                     selected = false,
-                    onClick = {
-                        navController.navigate("doctor_view")
-                    },
+                    onClick = { navController.navigate("schedule") },
                     icon = {
                         Icon(
                             imageVector = Icons.Default.DateRange,
-                            contentDescription = "Doctor View",
+                            contentDescription = "Schedule",
                             tint = Color.Gray
                         )
                     }
                 )
 
-                // Profile
                 NavigationBarItem(
                     selected = false,
                     onClick = { navController.navigate("user_interface") },
@@ -136,7 +150,6 @@ fun HomeScreen(navController: NavController) {
                     }
                 )
 
-                // History
                 NavigationBarItem(
                     selected = false,
                     onClick = { navController.navigate("history") },
@@ -151,17 +164,18 @@ fun HomeScreen(navController: NavController) {
                 )
             }
         }
-    ) { paddingValues ->
+    ) { padding ->
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(padding)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
 
-            // HEADER
+            // ---------------- HEADER ----------------
             Row(verticalAlignment = Alignment.CenterVertically) {
+
                 if (profileBitmap != null) {
                     Image(
                         bitmap = profileBitmap.asImageBitmap(),
@@ -187,7 +201,7 @@ fun HomeScreen(navController: NavController) {
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(greeting, fontSize = 14.sp, color = Color(0xFF0F3D6E))
+                    Text("Hi, Welcome Back", fontSize = 14.sp, color = Color(0xFF0F3D6E))
                     Text(userName, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
 
@@ -201,7 +215,7 @@ fun HomeScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Niramaya",
+                "Niramaya",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF0F3D6E)
@@ -209,16 +223,116 @@ fun HomeScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // ---------------- CURRENT MEDICATION ----------------
             Card(
                 shape = RoundedCornerShape(32.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF2F8)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
+                modifier = Modifier.fillMaxWidth().height(200.dp)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    Text("Current Medication", fontWeight = FontWeight.Medium)
+
+                    Text(
+                        "Current Medication",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF0F3D6E)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    when {
+                        isMedsLoading -> {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        }
+
+                        activeMeds.isEmpty() -> {
+                            Text("No active medications", color = Color.Gray, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                "Select medicines from prescriptions",
+                                color = Color(0xFF2196F3),
+                                fontSize = 13.sp,
+                                modifier = Modifier.clickable {
+                                    navController.navigate("select_medicines")
+                                }
+                            )
+                        }
+
+                        else -> {
+                            activeMeds.take(3).forEach { (name, dosage) ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("•", fontSize = 24.sp, color = Color(0xFF0F3D6E))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("$name — $dosage", fontSize = 14.sp)
+                                }
+                            }
+
+                            if (activeMeds.size > 3) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    "+${activeMeds.size - 3} more",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                    }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // ---------------- APPOINTMENT + BANNER ----------------
+            Row(
+                modifier = Modifier.fillMaxWidth().height(180.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF2F8)),
+                    modifier = Modifier.weight(1f).fillMaxHeight()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp).fillMaxSize(),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "Next doctor visit",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF0F3D6E)
+                        )
+
+                        Text(
+                            "Check your schedule for upcoming appointments",
+                            fontSize = 13.sp,
+                            color = Color(0xFF0F3D6E)
+                        )
+
+                        Text(
+                            "View Schedule →",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2196F3),
+                            modifier = Modifier.clickable {
+                                navController.navigate("schedule")
+                            }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Image(
+                    painter = painterResource(id = R.drawable.home_banner),
+                    contentDescription = "Home Banner",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(24.dp))
+                )
             }
         }
     }
