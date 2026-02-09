@@ -80,9 +80,14 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraVersion")
     implementation("androidx.camera:camera-extensions:$cameraVersion")
 
+    // ---8. For gemini
+    implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
+
     // --- 7. RETROFIT (For AI Backend) ---
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+
+    implementation("com.google.zxing:core:3.5.2")
 
     // --- 8. DEBUGGING & TESTING ---
     testImplementation(libs.junit)

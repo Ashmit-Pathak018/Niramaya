@@ -1,15 +1,13 @@
 package com.example.niramaya.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Medication
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,160 +18,216 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.niramaya.data.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnalysisResultScreen(navController: NavController) {
+fun AnalysisResultScreen(
+    navController: NavController
+) {
+    // --- FETCH RAW JSON FROM MEMORY ---
+    val rawJson = TempAnalysisStore.jsonResult ?: ""
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFDF8F5))
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        // --- HEADER ---
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = Color(0xFF0F3D6E),
-                modifier = Modifier
-                    .size(28.dp)
-                    .clickable { navController.popBackStack() }
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(
-                text = "Analysis Report",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF0F3D6E)
+    // --- PARSE JSON SAFELY ---
+    val parsedResult: PrescriptionResult = remember(rawJson) {
+        try {
+            val cleanJson = rawJson
+                .replace("```json", "")
+                .replace("```", "")
+                .trim()
+
+            parsePrescriptionJson(cleanJson)
+        } catch (e: Exception) {
+            PrescriptionResult(
+                doctor = "",
+                date = "",
+                diagnosis = "",
+                medicines = emptyList()
             )
         }
+    }
 
-        Spacer(modifier = Modifier.height(24.dp))
+    // --- EDITABLE STATE ---
+    var doctorName by remember { mutableStateOf(parsedResult.doctor) }
+    var visitDate by remember { mutableStateOf(parsedResult.date) }
+    var isSaving by remember { mutableStateOf(false) }
 
-        // --- SUCCESS BANNER ---
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)), // Light Green
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+    val medicines = remember {
+        mutableStateListOf<MedicineEntry>().apply {
+            addAll(parsedResult.medicines)
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Verify Details", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color(0xFFFDF8F5)
+                )
+            )
+        },
+        bottomBar = {
+            Button(
+                enabled = !isSaving,
+                onClick = {
+                    val finalResult = PrescriptionResult(
+                        doctor = doctorName,
+                        date = visitDate,
+                        diagnosis = parsedResult.diagnosis,
+                        medicines = medicines.toList()
+                    )
+
+                    isSaving = true
+
+                    FirestoreRepository.savePrescription(
+                        prescription = finalResult,
+                        onSuccess = {
+                            TempAnalysisStore.jsonResult = null
+                            isSaving = false
+                            navController.navigate("home") {
+                                popUpTo("home") { inclusive = true }
+                            }
+                        },
+                        onFailure = {
+                            isSaving = false
+                        }
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+                    .height(55.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F3D6E)),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
-                Spacer(modifier = Modifier.width(12.dp))
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                } else {
+                    Icon(Icons.Default.Check, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Confirm & Save to Record",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(Color(0xFFFDF8F5))
+                .padding(horizontal = 24.dp)
+        ) {
+
+            item {
                 Text(
-                    text = "Prescription Analyzed Successfully",
-                    color = Color(0xFF1B5E20),
-                    fontWeight = FontWeight.Medium
+                    "Please check the info extracted by AI. Tap any field to edit.",
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(bottom = 20.dp)
+                )
+
+                OutlinedTextField(
+                    value = doctorName,
+                    onValueChange = { doctorName = it },
+                    label = { Text("Doctor Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = visitDate,
+                    onValueChange = { visitDate = it },
+                    label = { Text("Date of Visit") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Text(
+                    "Medicines Found:",
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF0F3D6E)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            itemsIndexed(medicines) { index, med ->
+                EditableMedCard(
+                    entry = med,
+                    onNameChange = {
+                        medicines[index] =
+                            medicines[index].copy(name = it)
+                    },
+                    onDosageChange = {
+                        medicines[index] =
+                            medicines[index].copy(dosage = it)
+                    }
                 )
             }
-        }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- EXTRACTED MEDICINES ---
-        Text(
-            text = "Identified Medicines",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF0F3D6E)
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Medicine 1
-        MedicineCard(name = "Amoxicillin", dosage = "500mg", freq = "Twice a day", color = Color(0xFFFFCDD2))
-        // Medicine 2
-        MedicineCard(name = "Paracetamol", dosage = "650mg", freq = "When needed", color = Color(0xFFBBDEFB))
-        // Medicine 3
-        MedicineCard(name = "Cetirizine", dosage = "10mg", freq = "Nightly", color = Color(0xFFC8E6C9))
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // --- DOCTOR DETAILS ---
-        Text(
-            text = "Doctor Details",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF0F3D6E)
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                DetailRow("Doctor:", "Dr. Ashmit Pathak")
-                Divider(color = Color.LightGray, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 8.dp))
-                DetailRow("Date:", "10th Feb 2026")
-                Divider(color = Color.LightGray, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 8.dp))
-                DetailRow("Diagnosis:", "Viral Fever & Fatigue")
+            item {
+                Spacer(modifier = Modifier.height(100.dp))
             }
-        }
-
-        Spacer(modifier = Modifier.height(40.dp))
-
-        // --- SAVE BUTTON ---
-        Button(
-            onClick = {
-                // In real app: Save to Firestore
-                navController.navigate("home") {
-                    popUpTo("home") { inclusive = true }
-                }
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F3D6E)),
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth().height(50.dp)
-        ) {
-            Text("Save to Schedule", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-fun MedicineCard(name: String, dosage: String, freq: String, color: Color) {
+fun EditableMedCard(
+    entry: MedicineEntry,
+    onNameChange: (String) -> Unit,
+    onDosageChange: (String) -> Unit
+) {
     Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Pill Icon
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(color, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Medication, contentDescription = null, tint = Color.Black.copy(alpha = 0.6f))
-            }
+            Icon(
+                Icons.Default.Medication,
+                contentDescription = null,
+                tint = Color(0xFF0F3D6E)
+            )
 
             Spacer(modifier = Modifier.width(16.dp))
 
             Column {
-                Text(text = name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.Black)
-                Text(text = "$dosage • $freq", fontSize = 14.sp, color = Color.Gray)
+                BasicTextField(
+                    value = entry.name,
+                    onValueChange = onNameChange,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                BasicTextField(
+                    value = entry.dosage,
+                    onValueChange = onDosageChange,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = Color.Gray
+                    )
+                )
             }
         }
-    }
-}
-
-@Composable
-fun DetailRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(text = label, color = Color.Gray, fontSize = 14.sp)
-        Text(text = value, color = Color(0xFF0F3D6E), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
     }
 }
