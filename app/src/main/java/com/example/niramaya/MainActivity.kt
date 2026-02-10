@@ -1,5 +1,7 @@
 package com.example.niramaya
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -27,7 +29,21 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        // --- 2. START EMERGENCY SERVICE ---
+        // --- 2. CREATE NOTIFICATION CHANNEL (REQUIRED) ---
+        // Without this, notifications will NOT appear on modern Android phones
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "appointment_channel",
+                "Appointments",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Reminders for upcoming doctor visits"
+            }
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+
+        // --- 3. START EMERGENCY SERVICE ---
         val serviceIntent = Intent(this, EmergencyService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
@@ -35,11 +51,11 @@ class MainActivity : ComponentActivity() {
             startService(serviceIntent)
         }
 
-        // --- 3. CHECK LOGIN STATUS ---
+        // --- 4. CHECK LOGIN STATUS ---
         val auth = FirebaseAuth.getInstance()
         val startDest = if (auth.currentUser != null) "home" else "login"
 
-        // --- 4. LOAD UI ---
+        // --- 5. LOAD UI ---
         setContent {
             NiramayaApp(startDestination = startDest)
         }
@@ -55,35 +71,28 @@ fun NiramayaApp(startDestination: String) {
         startDestination = startDestination
     ) {
 
-        // --- YOUR EXISTING ROUTES (UNCHANGED) ---
-
+        // --- AUTH & HOME ---
         composable("login") { LoginScreen(navController) }
-
         composable("home") { HomeScreen(navController) }
 
-        // This remains your original User Interface Page
+        // --- MAIN FEATURES ---
         composable("user_interface") { UserInterfacePage(navController) }
-
-        // This remains your original Profile Route
         composable("profile") { ProfileScreen(navController) }
-
         composable("upload") { UploadScreen(navController) }
-
         composable("analysis_result") { AnalysisResultScreen(navController) }
-
-
-
         composable("emergency_qr") { EmergencyQRScreen(navController) }
-
         composable("history") { HistoryScreen(navController) }
-        // Inside MainActivity.kt -> NavHost { ... }
 
-        composable("schedule") { DoctorViewScreen(navController) }
+        // --- SCHEDULE & DOCTOR ---
+        composable("schedule") { ScheduleScreen(navController) }
+        composable("doctor_view") { DoctorViewScreen(navController) }
 
-        composable("select_medicines") {
-            SelectMedicinesScreen(navController)
-        }
+        // --- 🔥 NEW: NOTIFICATIONS SCREEN ---
+        composable("notifications") { NotificationsScreen(navController) }
 
+        // -----------------------------
+
+        composable("select_medicines") { SelectMedicinesScreen(navController) }
 
         composable(
             route = "record_detail/{recordId}",
@@ -93,15 +102,9 @@ fun NiramayaApp(startDestination: String) {
             RecordDetailScreen(navController = navController, recordId = recordId)
         }
 
-        // --- NEW FEATURES ADDED (EXTRA ROUTES) ---
-
-        // 1. Settings Screen
+        // --- SETTINGS & EXTRAS ---
         composable("settings") { SettingsScreen(navController) }
-
-        // 2. Important / Medical ID Screen
         composable("important") { ImportantScreen(navController) }
-
-        // 3. Profile Update / Edit Screen
         composable("profile_update") { ProfileUpdateScreen(navController) }
     }
 }

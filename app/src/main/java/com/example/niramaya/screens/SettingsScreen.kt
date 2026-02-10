@@ -1,5 +1,7 @@
 package com.example.niramaya.screens
 
+import android.content.Intent
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,8 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.niramaya.services.EmergencyService
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +46,7 @@ fun SettingsScreen(navController: NavController) {
 
     // --- STATE ---
     var notificationsEnabled by remember { mutableStateOf(true) }
+    var emergencyEnabled by remember { mutableStateOf(false) } // ✅ Default OFF
     var isLoading by remember { mutableStateOf(true) }
     var showPasswordDialog by remember { mutableStateOf(false) }
 
@@ -50,8 +55,8 @@ fun SettingsScreen(navController: NavController) {
         settingsRef.get()
             .addOnSuccessListener { doc ->
                 if (doc.exists()) {
-                    notificationsEnabled =
-                        doc.getBoolean("pushNotifications") ?: true
+                    notificationsEnabled = doc.getBoolean("pushNotifications") ?: true
+                    emergencyEnabled = doc.getBoolean("emergencyNotifications") ?: false // ✅ Load State
                 }
                 isLoading = false
             }
@@ -109,6 +114,7 @@ fun SettingsScreen(navController: NavController) {
             // ---------- GENERAL ----------
             SettingsSectionTitle("General")
 
+            // 1. Push Notifications
             SettingsSwitchItem(
                 icon = Icons.Default.Notifications,
                 title = "Push Notifications",
@@ -117,8 +123,36 @@ fun SettingsScreen(navController: NavController) {
                     notificationsEnabled = enabled
                     settingsRef.set(
                         mapOf("pushNotifications" to enabled),
-                        com.google.firebase.firestore.SetOptions.merge()
+                        SetOptions.merge()
                     )
+                }
+            )
+
+            // 2. Emergency Medical ID (The New Logic)
+            SettingsSwitchItem(
+                icon = Icons.Default.Warning,
+                title = "Emergency Medical ID",
+                checked = emergencyEnabled,
+                onCheckedChange = { enabled ->
+                    emergencyEnabled = enabled
+
+                    // 1. Save Preference
+                    settingsRef.set(
+                        mapOf("emergencyNotifications" to enabled),
+                        SetOptions.merge()
+                    )
+
+                    // 2. Start / Stop Service
+                    val intent = Intent(context, EmergencyService::class.java)
+                    if (enabled) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent)
+                        } else {
+                            context.startService(intent)
+                        }
+                    } else {
+                        context.stopService(intent)
+                    }
                 }
             )
 
@@ -184,7 +218,7 @@ fun SettingsScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(40.dp))
         }
 
-        // ---------- PASSWORD RESET ----------
+        // ---------- PASSWORD RESET DIALOG ----------
         if (showPasswordDialog) {
             AlertDialog(
                 onDismissRequest = { showPasswordDialog = false },

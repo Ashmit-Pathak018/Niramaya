@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
 object GeminiManager {
 
     // ⚠️ Move to local.properties later
-    private const val API_KEY = "AIzaSyDah3DAOOxPiMEwn8pyz7nyV0VN0coow7M"
+    private const val API_KEY = "AIzaSyDMQKsUFyGgOpP3A8tQ9OxkLwl002lP9qk"
 
     private val model = GenerativeModel(
         modelName = "gemini-2.5-flash",

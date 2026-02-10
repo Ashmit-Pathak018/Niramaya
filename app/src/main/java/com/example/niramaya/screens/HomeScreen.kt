@@ -45,11 +45,16 @@ fun HomeScreen(navController: NavController) {
     var activeMeds by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var isMedsLoading by remember { mutableStateOf(true) }
 
+    // 🔥 Next Appointment State
+    var nextAppointmentDate by remember { mutableStateOf("No upcoming visits") }
+    var nextAppointmentDoctor by remember { mutableStateOf("Check your schedule") }
+
     var showMedsSheet by remember { mutableStateOf(false) }
 
     // ---------------- LIVE LISTENERS ----------------
     DisposableEffect(user.uid) {
 
+        // 1. User Profile Listener
         val userListener = db.collection("users")
             .document(user.uid)
             .addSnapshotListener { doc, _ ->
@@ -59,6 +64,7 @@ fun HomeScreen(navController: NavController) {
                 }
             }
 
+        // 2. Active Medications Listener
         val medsListener = db.collection("users")
             .document(user.uid)
             .collection("active_medications")
@@ -73,13 +79,37 @@ fun HomeScreen(navController: NavController) {
                 }
             }
 
+        // 3. Nearest Future Appointment Listener
+        val appointmentListener = db.collection("users").document(user.uid)
+            .collection("appointments")
+            .whereGreaterThan("timestamp", System.currentTimeMillis()) // Only future dates
+            .orderBy("timestamp")
+            .limit(1) // Get only the very next one
+            .addSnapshotListener { snap, _ ->
+                if (snap != null && !snap.isEmpty) {
+                    val doc = snap.documents[0]
+                    val date = doc.getString("dateStr") ?: ""
+                    val time = doc.getString("timeStr") ?: ""
+                    val doctor = doc.getString("doctorName") ?: ""
+
+                    if (date.isNotEmpty()) {
+                        nextAppointmentDate = "$date • $time"
+                        nextAppointmentDoctor = "Dr. $doctor"
+                    }
+                } else {
+                    nextAppointmentDate = "No upcoming visits"
+                    nextAppointmentDoctor = "Check your schedule"
+                }
+            }
+
         onDispose {
             userListener.remove()
             medsListener.remove()
+            appointmentListener.remove()
         }
     }
 
-    // ---------------- PROFILE IMAGE ----------------
+    // ---------------- PROFILE IMAGE LOGIC ----------------
     val profileBitmap = remember(userImageBase64) {
         try {
             if (userImageBase64.isNotEmpty()) {
@@ -114,51 +144,25 @@ fun HomeScreen(navController: NavController) {
                 tonalElevation = 8.dp,
                 modifier = Modifier.height(80.dp)
             ) {
-
                 NavigationBarItem(
                     selected = true,
                     onClick = {},
-                    icon = {
-                        Icon(
-                            painter = painterResource(id = R.drawable.home),
-                            contentDescription = "Home",
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                    icon = { Icon(painter = painterResource(id = R.drawable.home), contentDescription = "Home", modifier = Modifier.size(24.dp)) }
                 )
-
                 NavigationBarItem(
                     selected = false,
                     onClick = { navController.navigate("schedule") },
-                    icon = {
-                        Icon(Icons.Default.DateRange, contentDescription = "Schedule", tint = Color.Gray)
-                    }
+                    icon = { Icon(Icons.Default.DateRange, contentDescription = "Schedule", tint = Color.Gray) }
                 )
-
                 NavigationBarItem(
                     selected = false,
                     onClick = { navController.navigate("user_interface") },
-                    icon = {
-                        Icon(
-                            painter = painterResource(id = R.drawable.profile),
-                            contentDescription = "Profile",
-                            modifier = Modifier.size(24.dp),
-                            tint = Color.Gray
-                        )
-                    }
+                    icon = { Icon(painter = painterResource(id = R.drawable.profile), contentDescription = "Profile", modifier = Modifier.size(24.dp), tint = Color.Gray) }
                 )
-
                 NavigationBarItem(
                     selected = false,
                     onClick = { navController.navigate("history") },
-                    icon = {
-                        Icon(
-                            painter = painterResource(id = R.drawable.history),
-                            contentDescription = "History",
-                            modifier = Modifier.size(24.dp),
-                            tint = Color.Gray
-                        )
-                    }
+                    icon = { Icon(painter = painterResource(id = R.drawable.history), contentDescription = "History", modifier = Modifier.size(24.dp), tint = Color.Gray) }
                 )
             }
         }
@@ -170,88 +174,61 @@ fun HomeScreen(navController: NavController) {
                 .padding(padding)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
-
-            // ---------------- HEADER ----------------
+            // Header Section
             Row(verticalAlignment = Alignment.CenterVertically) {
-
                 if (profileBitmap != null) {
                     Image(
                         bitmap = profileBitmap.asImageBitmap(),
                         contentDescription = "Profile",
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .clickable { navController.navigate("user_interface") }
+                        modifier = Modifier.size(50.dp).clip(CircleShape).clickable { navController.navigate("user_interface") }
                     )
                 } else {
                     Image(
                         painter = painterResource(id = R.drawable.ic_launcher_foreground),
                         contentDescription = "Profile",
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(Color.LightGray)
-                            .clickable { navController.navigate("user_interface") }
+                        modifier = Modifier.size(50.dp).clip(CircleShape).background(Color.LightGray).clickable { navController.navigate("user_interface") }
                     )
                 }
-
                 Spacer(modifier = Modifier.width(12.dp))
-
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Hi, Welcome Back", fontSize = 14.sp, color = Color(0xFF0F3D6E))
                     Text(userName, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
 
-                Icon(Icons.Default.Notifications, contentDescription = "Notifications", modifier = Modifier.size(28.dp))
+                // 🔥 BELL ICON - CLICKABLE TO NOTIFICATIONS SCREEN
+                Icon(
+                    imageVector = Icons.Default.Notifications,
+                    contentDescription = "Notifications",
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clickable { navController.navigate("notifications") } // ✅ Connected!
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
             Text("Niramaya", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F3D6E))
-
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ---------------- CURRENT MEDICATION ----------------
+            // Current Medication Card
             Card(
                 shape = RoundedCornerShape(32.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF2F8)),
                 modifier = Modifier.fillMaxWidth().height(200.dp)
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-
-                    // ✏️ EDIT BUTTON
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = "Edit Medications",
                         tint = Color(0xFF0F3D6E),
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(16.dp)
-                            .size(20.dp)
-                            .clickable { showMedsSheet = true }
+                        modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).size(20.dp).clickable { showMedsSheet = true }
                     )
-
                     Column(modifier = Modifier.padding(24.dp)) {
-
-                        Text(
-                            "Current Medication",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF0F3D6E)
-                        )
-
+                        Text("Current Medication", fontSize = 18.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F3D6E))
                         Spacer(modifier = Modifier.height(12.dp))
-
                         when {
-                            isMedsLoading -> {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                            }
-
-                            activeMeds.isEmpty() -> {
-                                Text("No active medications", color = Color.Gray)
-                            }
-
+                            isMedsLoading -> CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            activeMeds.isEmpty() -> Text("No active medications", color = Color.Gray)
                             else -> {
                                 activeMeds.take(3).forEach { (name, dosage) ->
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -260,7 +237,6 @@ fun HomeScreen(navController: NavController) {
                                         Text("$name — $dosage", fontSize = 14.sp)
                                     }
                                 }
-
                                 if (activeMeds.size > 3) {
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text("+${activeMeds.size - 3} more", fontSize = 12.sp, color = Color.Gray)
@@ -273,12 +249,11 @@ fun HomeScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ---------------- APPOINTMENT + BANNER ----------------
+            // Appointment Card (Connected to Real Data)
             Row(
                 modifier = Modifier.fillMaxWidth().height(180.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-
                 Card(
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF2F8)),
@@ -289,7 +264,12 @@ fun HomeScreen(navController: NavController) {
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Next doctor visit", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        Text("Check your schedule for upcoming appointments", fontSize = 13.sp)
+
+                        Column {
+                            Text(nextAppointmentDate, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F3D6E))
+                            Text(nextAppointmentDoctor, fontSize = 12.sp, color = Color.Gray)
+                        }
+
                         Text(
                             "View Schedule →",
                             fontSize = 12.sp,
@@ -308,27 +288,18 @@ fun HomeScreen(navController: NavController) {
                     painter = painterResource(id = R.drawable.home_banner),
                     contentDescription = "Home Banner",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(24.dp))
+                    modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(24.dp))
                 )
             }
         }
     }
 
-    // ---------------- MEDICATION BOTTOM SHEET ----------------
+    // Medication Sheet
     if (showMedsSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showMedsSheet = false },
-            containerColor = Color.White
-        ) {
+        ModalBottomSheet(onDismissRequest = { showMedsSheet = false }, containerColor = Color.White) {
             Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-
                 Text("Active Medications", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-
                 Spacer(modifier = Modifier.height(16.dp))
-
                 if (activeMeds.isEmpty()) {
                     Text("No active medications", color = Color.Gray)
                 } else {
@@ -343,19 +314,10 @@ fun HomeScreen(navController: NavController) {
                         }
                     }
                 }
-
                 Spacer(modifier = Modifier.height(24.dp))
-
-                Button(
-                    onClick = {
-                        showMedsSheet = false
-                        navController.navigate("select_medicines")
-                    },
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
-                ) {
+                Button(onClick = { showMedsSheet = false; navController.navigate("select_medicines") }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
                     Text("Edit Active Medicines")
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }

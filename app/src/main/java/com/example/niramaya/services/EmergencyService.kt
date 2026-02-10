@@ -9,7 +9,6 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.example.niramaya.MainActivity
 import com.example.niramaya.R
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -22,7 +21,10 @@ class EmergencyService : Service() {
         val user = FirebaseAuth.getInstance().currentUser
 
         if (user != null) {
-            FirebaseFirestore.getInstance().collection("users").document(user.uid).get()
+            FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(user.uid)
+                .get()
                 .addOnSuccessListener { doc ->
                     val blood = doc.getString("bloodGroup") ?: "N/A"
                     val allergies = doc.getString("allergies") ?: "None"
@@ -32,12 +34,13 @@ class EmergencyService : Service() {
                 }
         }
 
-        return START_STICKY // Restarts if the system kills it
+        return START_STICKY
     }
 
     private fun showNotification(blood: String, allergies: String, phone: String) {
         val channelId = "emergency_channel"
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -46,28 +49,37 @@ class EmergencyService : Service() {
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Shows medical info on lock screen"
-                // THIS IS THE KEY: Allows content to show without unlocking
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             manager.createNotificationChannel(channel)
         }
 
-        val intent = Intent(this, MainActivity::class.java)
+        // ✅ SAFE LAUNCHER INTENT (NO MainActivity reference)
+        val launchIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            setPackage(packageName)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent, PendingIntent.FLAG_IMMUTABLE
+            this,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_IMMUTABLE
         )
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("🚨 EMERGENCY MEDICAL ID")
-            // Short text for the collapsed view
             .setContentText("Blood: $blood | Allergies: $allergies")
-            // Long text for the expanded view
-            .setStyle(NotificationCompat.BigTextStyle()
-                .bigText("Blood Type: $blood\nAllergies: $allergies\nContact: $phone"))
-            .setPriority(NotificationCompat.PRIORITY_MAX) // Use MAX for higher visibility
-            .setCategory(NotificationCompat.CATEGORY_ALARM) // Categorize as alarm/emergency
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // <--- CRITICAL
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "Blood Type: $blood\nAllergies: $allergies\nContact: $phone"
+                )
+            )
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .build()
