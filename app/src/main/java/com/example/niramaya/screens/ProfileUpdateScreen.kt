@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.niramaya.R
+import com.example.niramaya.utils.CryptoManager // 🔥 Added Crypto Import
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import java.io.ByteArrayOutputStream
@@ -80,7 +81,7 @@ fun ProfileUpdateScreen(navController: NavController) {
         }
     }
 
-    // ---------- LOAD EXISTING DATA ----------
+    // ---------- LOAD EXISTING DATA (DECRYPTED) ----------
     LaunchedEffect(Unit) {
         db.collection("users")
             .document(userId)
@@ -88,18 +89,21 @@ fun ProfileUpdateScreen(navController: NavController) {
             .addOnSuccessListener { doc ->
                 if (!doc.exists()) return@addOnSuccessListener
 
-                fullName = doc.getString("fullName") ?: ""
-                phoneNumber = doc.getString("phoneNumber") ?: ""
-                age = doc.getString("age") ?: ""
-                dob = doc.getString("dob") ?: ""
-                bloodGroup = doc.getString("bloodGroup") ?: ""
-                gender = doc.getString("gender") ?: ""
-                disease = doc.getString("disease") ?: ""
-                allergies = doc.getString("allergies") ?: ""
+                // 🔥 DECRYPT ON LOAD
+                fullName = CryptoManager.decrypt(doc.getString("fullName") ?: "")
+                phoneNumber = CryptoManager.decrypt(doc.getString("phoneNumber") ?: "")
+                age = CryptoManager.decrypt(doc.getString("age") ?: "")
+                dob = CryptoManager.decrypt(doc.getString("dob") ?: "")
+                bloodGroup = CryptoManager.decrypt(doc.getString("bloodGroup") ?: "")
+                gender = CryptoManager.decrypt(doc.getString("gender") ?: "")
 
-                emergencyName = doc.getString("emergencyContactName") ?: ""
-                emergencyPhone = doc.getString("emergencyContactNumber") ?: ""
+                disease = CryptoManager.decrypt(doc.getString("disease") ?: "")
+                allergies = CryptoManager.decrypt(doc.getString("allergies") ?: "")
 
+                emergencyName = CryptoManager.decrypt(doc.getString("emergencyContactName") ?: "")
+                emergencyPhone = CryptoManager.decrypt(doc.getString("emergencyContactNumber") ?: "")
+
+                // Profile Pic stays plain (Base64 is too big to encrypt safely)
                 profilePicBase64 = doc.getString("profilePic") ?: ""
             }
     }
@@ -222,33 +226,40 @@ fun ProfileUpdateScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // ---------- SAVE ----------
+            // ---------- SAVE (ENCRYPTED) ----------
             Button(
                 onClick = {
                     isSaving = true
 
+                    // 🔥 ENCRYPT BEFORE SAVING
                     val data = mapOf(
-                        "fullName" to fullName,
-                        "phoneNumber" to phoneNumber,
-                        "age" to age,
-                        "dob" to dob,
-                        "bloodGroup" to bloodGroup,
-                        "gender" to gender,
-                        "disease" to disease,
-                        "allergies" to allergies,
-                        "emergencyContactName" to emergencyName,
-                        "emergencyContactNumber" to emergencyPhone,
-                        "profilePic" to profilePicBase64
+                        "fullName" to CryptoManager.encrypt(fullName),
+                        "phoneNumber" to CryptoManager.encrypt(phoneNumber),
+                        "age" to CryptoManager.encrypt(age),
+                        "dob" to CryptoManager.encrypt(dob),
+                        "bloodGroup" to CryptoManager.encrypt(bloodGroup),
+                        "gender" to CryptoManager.encrypt(gender),
+                        "disease" to CryptoManager.encrypt(disease),
+                        "allergies" to CryptoManager.encrypt(allergies),
+                        "emergencyContactName" to CryptoManager.encrypt(emergencyName),
+                        "emergencyContactNumber" to CryptoManager.encrypt(emergencyPhone),
+                        "profilePic" to profilePicBase64 // Left plain
                     )
 
                     db.collection("users").document(userId)
                         .update(data)
                         .addOnSuccessListener {
-                            Toast.makeText(context, "Profile Updated", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Profile Updated & Encrypted", Toast.LENGTH_SHORT).show()
                             navController.popBackStack()
                         }
                         .addOnFailureListener {
-                            Toast.makeText(context, "Update failed", Toast.LENGTH_SHORT).show()
+                            // If doc doesn't exist, create it
+                            db.collection("users").document(userId)
+                                .set(data)
+                                .addOnSuccessListener {
+                                    Toast.makeText(context, "Profile Created", Toast.LENGTH_SHORT).show()
+                                    navController.popBackStack()
+                                }
                         }
                         .addOnCompleteListener { isSaving = false }
                 },
@@ -268,7 +279,7 @@ fun ProfileUpdateScreen(navController: NavController) {
     }
 }
 
-/* ---------- HELPERS ---------- */
+/* ---------- HELPERS (UNCHANGED) ---------- */
 
 @Composable
 private fun SectionHeader(title: String) {

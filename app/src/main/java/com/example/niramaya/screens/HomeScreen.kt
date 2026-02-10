@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.niramaya.R
+import com.example.niramaya.utils.CryptoManager // 🔥 Added Import
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
@@ -59,7 +60,12 @@ fun HomeScreen(navController: NavController) {
             .document(user.uid)
             .addSnapshotListener { doc, _ ->
                 if (doc != null && doc.exists()) {
-                    userName = doc.getString("fullName") ?: userName
+                    // 🔥 DECRYPT NAME HERE
+                    val rawName = doc.getString("fullName") ?: ""
+                    if (rawName.isNotEmpty()) {
+                        userName = CryptoManager.decrypt(rawName)
+                    }
+
                     userImageBase64 = doc.getString("profilePic") ?: ""
                 }
             }

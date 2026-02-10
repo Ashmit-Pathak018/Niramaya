@@ -7,11 +7,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -29,40 +31,41 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.niramaya.R
+import com.example.niramaya.data.FirestoreRepository // 🔥 Added Repository
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
 fun UserInterfacePage(navController: NavController) {
     val auth = FirebaseAuth.getInstance()
+
+    // --- STATE ---
     var userName by remember { mutableStateOf("Loading...") }
     var userImageBase64 by remember { mutableStateOf("") }
 
-    // --- FETCH DATA FROM FIRESTORE ---
+    // --- FETCH & DECRYPT DATA ---
     LaunchedEffect(Unit) {
-        val user = auth.currentUser
-        if (user != null) {
-            FirebaseFirestore.getInstance()
-                .collection("users")
-                .document(user.uid)
-                .get()
-                .addOnSuccessListener {
-                    userName = it.getString("fullName") ?: "User"
-                    userImageBase64 = it.getString("profilePic") ?: ""
-                }
-        }
+        // We use the Repository so it automatically Decrypts the name
+        FirestoreRepository.getUserProfile(
+            onSuccess = { data ->
+                userName = data["fullName"] ?: "User"
+                userImageBase64 = data["profilePic"] ?: ""
+            },
+            onFailure = {
+                userName = "User"
+            }
+        )
     }
 
     // --- DECODE IMAGE ---
     val profileBitmap = remember(userImageBase64) {
-        if (userImageBase64.isNotEmpty()) {
-            try {
+        try {
+            if (userImageBase64.isNotEmpty()) {
                 val decodedBytes = Base64.decode(userImageBase64, Base64.DEFAULT)
                 BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-            } catch (e: Exception) {
-                null
-            }
-        } else null
+            } else null
+        } catch (e: Exception) {
+            null
+        }
     }
 
     Column(
@@ -84,7 +87,7 @@ fun UserInterfacePage(navController: NavController) {
                     .clickable { navController.popBackStack() }
             )
             Text(
-                text = "My Profile",
+                text = "Settings",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF0F3D6E),
@@ -133,24 +136,31 @@ fun UserInterfacePage(navController: NavController) {
         Spacer(modifier = Modifier.height(40.dp))
 
         // MENU OPTIONS
+
+        // 1. Profile (Goes to View Screen)
         MenuOptionItem(
             icon = Icons.Default.PersonOutline,
             text = "Profile",
-            onClick = { navController.navigate("profile_update") }
+            onClick = { navController.navigate("profile") } // ✅ Correct Route
         )
 
+        // 2. Important (Medical ID / Emergency)
         MenuOptionItem(
             icon = Icons.Default.FavoriteBorder,
-            text = "Important",
+            text = "Important Info",
             onClick = { navController.navigate("important") }
         )
 
+        // 3. Settings (General)
         MenuOptionItem(
             icon = Icons.Default.Settings,
             text = "Settings",
             onClick = { navController.navigate("settings") }
         )
 
+        Spacer(modifier = Modifier.weight(1f))
+
+        // 4. Logout
         MenuOptionItem(
             icon = Icons.AutoMirrored.Filled.ExitToApp,
             text = "Logout",
@@ -162,10 +172,12 @@ fun UserInterfacePage(navController: NavController) {
                 }
             }
         )
+
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }
 
-// --- MENU ITEM ---
+// --- MENU ITEM COMPONENT ---
 @Composable
 fun MenuOptionItem(
     icon: ImageVector,
@@ -180,22 +192,27 @@ fun MenuOptionItem(
             .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Icon Box
         Box(
             modifier = Modifier
                 .size(45.dp)
-                .background(Color(0xFFEAF2F8), CircleShape),
+                .background(
+                    if (isDestructive) Color(0xFFFFEBEE) else Color(0xFFEAF2F8),
+                    CircleShape
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = text,
-                tint = if (isDestructive) Color.Red else Color.Black,
+                tint = if (isDestructive) Color.Red else Color(0xFF0F3D6E),
                 modifier = Modifier.size(24.dp)
             )
         }
 
         Spacer(modifier = Modifier.width(16.dp))
 
+        // Text
         Text(
             text = text,
             fontSize = 16.sp,
@@ -204,11 +221,14 @@ fun MenuOptionItem(
             color = if (isDestructive) Color.Red else Color.Black
         )
 
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-            contentDescription = null,
-            tint = Color.Gray,
-            modifier = Modifier.size(20.dp)
-        )
+        // Arrow
+        if (!isDestructive) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = Color.Gray,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }

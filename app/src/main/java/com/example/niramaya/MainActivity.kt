@@ -15,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.niramaya.screens.*
 import com.example.niramaya.services.EmergencyService
+import com.example.niramaya.services.PushNotificationService // 🔥 Added Import
 import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : ComponentActivity() {
@@ -30,7 +31,6 @@ class MainActivity : ComponentActivity() {
         }
 
         // --- 2. CREATE NOTIFICATION CHANNEL (REQUIRED) ---
-        // Without this, notifications will NOT appear on modern Android phones
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 "appointment_channel",
@@ -43,19 +43,24 @@ class MainActivity : ComponentActivity() {
             manager.createNotificationChannel(channel)
         }
 
-        // --- 3. START EMERGENCY SERVICE ---
-        val serviceIntent = Intent(this, EmergencyService::class.java)
+        // --- 3. START EMERGENCY SERVICE (LOCK SCREEN) ---
+        val emergencyIntent = Intent(this, EmergencyService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
+            startForegroundService(emergencyIntent)
         } else {
-            startService(serviceIntent)
+            startService(emergencyIntent)
         }
 
-        // --- 4. CHECK LOGIN STATUS ---
+        // --- 4. START PUSH NOTIFICATION SERVICE (ALERTS) ---
+        // This listens for new medicine/doctor alerts in the background
+        val pushIntent = Intent(this, PushNotificationService::class.java)
+        startService(pushIntent)
+
+        // --- 5. CHECK LOGIN STATUS ---
         val auth = FirebaseAuth.getInstance()
         val startDest = if (auth.currentUser != null) "home" else "login"
 
-        // --- 5. LOAD UI ---
+        // --- 6. LOAD UI ---
         setContent {
             NiramayaApp(startDestination = startDest)
         }
@@ -87,11 +92,10 @@ fun NiramayaApp(startDestination: String) {
         composable("schedule") { ScheduleScreen(navController) }
         composable("doctor_view") { DoctorViewScreen(navController) }
 
-        // --- 🔥 NEW: NOTIFICATIONS SCREEN ---
+        // --- NOTIFICATIONS ---
         composable("notifications") { NotificationsScreen(navController) }
 
-        // -----------------------------
-
+        // --- MEDICINES & RECORDS ---
         composable("select_medicines") { SelectMedicinesScreen(navController) }
 
         composable(

@@ -1,5 +1,6 @@
 package com.example.niramaya.data
 
+import com.example.niramaya.utils.CryptoManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.Timestamp
@@ -29,9 +30,9 @@ object FirestoreRepository {
     ) {
         val data = hashMapOf(
             "recordType" to recordType.name,
-            "title" to title,
-            "extractedText" to extractedText,
-            "personalNotes" to personalNotes,
+            "title" to CryptoManager.encrypt(title),
+            "extractedText" to CryptoManager.encrypt(extractedText),
+            "personalNotes" to CryptoManager.encrypt(personalNotes),
             "medicines" to medicines.map {
                 mapOf("name" to it.name, "dosage" to it.dosage)
             },
@@ -45,7 +46,7 @@ object FirestoreRepository {
     }
 
     // ─────────────────────────────────────────────
-    // LISTEN TO RECORDS (HISTORY / DOCTOR VIEW)
+    // LISTEN TO RECORDS
     // ─────────────────────────────────────────────
     fun listenToRecords(
         onUpdate: (List<HistoryRecord>) -> Unit
@@ -93,9 +94,9 @@ object FirestoreRepository {
         onFailure: (Exception) -> Unit
     ) {
         val update = hashMapOf(
-            "title" to title,
-            "extractedText" to extractedText,
-            "personalNotes" to personalNotes,
+            "title" to CryptoManager.encrypt(title),
+            "extractedText" to CryptoManager.encrypt(extractedText),
+            "personalNotes" to CryptoManager.encrypt(personalNotes),
             "medicines" to medicines.map {
                 mapOf("name" to it.name, "dosage" to it.dosage)
             }
@@ -124,7 +125,85 @@ object FirestoreRepository {
     }
 
     // ─────────────────────────────────────────────
-    // INTERNAL MAPPER (SAFE)
+    //  🔥 USER PROFILE (ENCRYPTED) - FIXED!
+    // ─────────────────────────────────────────────
+    fun saveUserProfile(
+        fullName: String,
+        phoneNumber: String,
+        bloodGroup: String,
+        age: String,
+        gender: String,
+        emergencyName: String, // Added
+        emergencyPhone: String, // Added
+        onSuccess: () -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+
+        val userMap = hashMapOf(
+            "fullName" to CryptoManager.encrypt(fullName),
+            "phoneNumber" to CryptoManager.encrypt(phoneNumber),
+            "bloodGroup" to CryptoManager.encrypt(bloodGroup),
+            "age" to CryptoManager.encrypt(age),
+            "gender" to CryptoManager.encrypt(gender),
+            // 🔥 NOW SAVING EMERGENCY INFO HERE TOO
+            "emergencyContactName" to CryptoManager.encrypt(emergencyName),
+            "emergencyContactNumber" to CryptoManager.encrypt(emergencyPhone)
+        )
+
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(userId)
+            .update(userMap as Map<String, Any>)
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener {
+                FirebaseFirestore.getInstance()
+                    .collection("users")
+                    .document(userId)
+                    .set(userMap)
+                    .addOnSuccessListener { onSuccess() }
+                    .addOnFailureListener { onFailure(it) }
+            }
+    }
+
+    fun getUserProfile(
+        onSuccess: (Map<String, String>) -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(userId)
+            .get()
+            .addOnSuccessListener { document ->
+                if (document != null && document.exists()) {
+                    val profileData = mapOf(
+                        "fullName" to CryptoManager.decrypt(document.getString("fullName") ?: ""),
+                        "phoneNumber" to CryptoManager.decrypt(document.getString("phoneNumber") ?: ""),
+                        "bloodGroup" to CryptoManager.decrypt(document.getString("bloodGroup") ?: ""),
+                        "age" to CryptoManager.decrypt(document.getString("age") ?: ""),
+                        "gender" to CryptoManager.decrypt(document.getString("gender") ?: ""),
+
+                        // 🔥 THIS WAS MISSING! NOW IT FETCHES THE CONTACTS!
+                        "emergencyContactName" to CryptoManager.decrypt(document.getString("emergencyContactName") ?: ""),
+                        "emergencyContactNumber" to CryptoManager.decrypt(document.getString("emergencyContactNumber") ?: ""),
+                        "disease" to CryptoManager.decrypt(document.getString("disease") ?: ""),
+                        "allergies" to CryptoManager.decrypt(document.getString("allergies") ?: ""),
+
+                        "email" to (document.getString("email") ?: ""),
+                        "profilePic" to (document.getString("profilePic") ?: "")
+                    )
+                    onSuccess(profileData)
+                } else {
+                    onFailure(Exception("User not found"))
+                }
+            }
+            .addOnFailureListener { onFailure(it) }
+    }
+
+    // ─────────────────────────────────────────────
+    // INTERNAL MAPPER
     // ─────────────────────────────────────────────
     private fun mapDocToHistoryRecord(
         doc: com.google.firebase.firestore.DocumentSnapshot
@@ -144,14 +223,14 @@ object FirestoreRepository {
 
         return HistoryRecord(
             id = doc.id,
-            title = doc.getString("title") ?: "Medical Record",
+            title = CryptoManager.decrypt(doc.getString("title") ?: "Medical Record"),
             recordType = RecordType.valueOf(
                 doc.getString("recordType") ?: "OTHER"
             ),
             createdAt = createdAtMillis,
-            extractedText = doc.getString("extractedText") ?: "",
+            extractedText = CryptoManager.decrypt(doc.getString("extractedText") ?: ""),
             medicines = medicines,
-            personalNotes = doc.getString("personalNotes") ?: ""
+            personalNotes = CryptoManager.decrypt(doc.getString("personalNotes") ?: "")
         )
     }
 }
