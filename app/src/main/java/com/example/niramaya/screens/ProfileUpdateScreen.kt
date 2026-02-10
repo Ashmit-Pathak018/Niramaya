@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.niramaya.R
-import com.example.niramaya.utils.CryptoManager // 🔥 Added Crypto Import
+import com.example.niramaya.utils.CryptoManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import java.io.ByteArrayOutputStream
@@ -89,7 +89,6 @@ fun ProfileUpdateScreen(navController: NavController) {
             .addOnSuccessListener { doc ->
                 if (!doc.exists()) return@addOnSuccessListener
 
-                // 🔥 DECRYPT ON LOAD
                 fullName = CryptoManager.decrypt(doc.getString("fullName") ?: "")
                 phoneNumber = CryptoManager.decrypt(doc.getString("phoneNumber") ?: "")
                 age = CryptoManager.decrypt(doc.getString("age") ?: "")
@@ -103,7 +102,6 @@ fun ProfileUpdateScreen(navController: NavController) {
                 emergencyName = CryptoManager.decrypt(doc.getString("emergencyContactName") ?: "")
                 emergencyPhone = CryptoManager.decrypt(doc.getString("emergencyContactNumber") ?: "")
 
-                // Profile Pic stays plain (Base64 is too big to encrypt safely)
                 profilePicBase64 = doc.getString("profilePic") ?: ""
             }
     }
@@ -116,7 +114,14 @@ fun ProfileUpdateScreen(navController: NavController) {
                     Text("Edit Profile", fontWeight = FontWeight.Bold, color = Color(0xFF0F3D6E))
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = {
+                        // 🔥 FIX: If there is no back stack (New User), force Go Home
+                        if (!navController.popBackStack()) {
+                            navController.navigate("home") {
+                                popUpTo("home") { inclusive = true }
+                            }
+                        }
+                    }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
@@ -226,12 +231,11 @@ fun ProfileUpdateScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // ---------- SAVE (ENCRYPTED) ----------
+            // ---------- SAVE (ENCRYPTED & GO HOME) ----------
             Button(
                 onClick = {
                     isSaving = true
 
-                    // 🔥 ENCRYPT BEFORE SAVING
                     val data = mapOf(
                         "fullName" to CryptoManager.encrypt(fullName),
                         "phoneNumber" to CryptoManager.encrypt(phoneNumber),
@@ -243,22 +247,28 @@ fun ProfileUpdateScreen(navController: NavController) {
                         "allergies" to CryptoManager.encrypt(allergies),
                         "emergencyContactName" to CryptoManager.encrypt(emergencyName),
                         "emergencyContactNumber" to CryptoManager.encrypt(emergencyPhone),
-                        "profilePic" to profilePicBase64 // Left plain
+                        "profilePic" to profilePicBase64
                     )
 
                     db.collection("users").document(userId)
                         .update(data)
                         .addOnSuccessListener {
-                            Toast.makeText(context, "Profile Updated & Encrypted", Toast.LENGTH_SHORT).show()
-                            navController.popBackStack()
+                            Toast.makeText(context, "Profile Saved!", Toast.LENGTH_SHORT).show()
+                            // 🔥 Force Home Navigation
+                            navController.navigate("home") {
+                                popUpTo("home") { inclusive = true }
+                            }
                         }
                         .addOnFailureListener {
-                            // If doc doesn't exist, create it
+                            // New User Creation Path
                             db.collection("users").document(userId)
                                 .set(data)
                                 .addOnSuccessListener {
                                     Toast.makeText(context, "Profile Created", Toast.LENGTH_SHORT).show()
-                                    navController.popBackStack()
+                                    // 🔥 Force Home Navigation
+                                    navController.navigate("home") {
+                                        popUpTo("home") { inclusive = true }
+                                    }
                                 }
                         }
                         .addOnCompleteListener { isSaving = false }
@@ -270,7 +280,7 @@ fun ProfileUpdateScreen(navController: NavController) {
                 if (isSaving) {
                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp))
                 } else {
-                    Text("Update Profile")
+                    Text("Save & Go Home")
                 }
             }
 
@@ -279,7 +289,7 @@ fun ProfileUpdateScreen(navController: NavController) {
     }
 }
 
-/* ---------- HELPERS (UNCHANGED) ---------- */
+/* ---------- HELPERS ---------- */
 
 @Composable
 private fun SectionHeader(title: String) {
