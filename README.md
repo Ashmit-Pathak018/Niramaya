@@ -50,7 +50,7 @@ It features an **Emergency Lock Screen Widget** powered by Android Foreground Se
 
 | **Secure Home** | **AI Analysis** | **Profile** |
 |:---:|:---:|:---:|
-| ![Home](screenshots/home.jpeg) | ![AI](screenshots/doctor_summary.jpeg) | ![Profile](screenshots/medical_id.jpeg) |
+| ![Home](screenshots/home.jpeg) | ![AI](screenshots/doctor_summary.jpeg) | ![Profile](screenshots/medical_id.jpg) |
 ---
 
 ## 🏗️ Installation & Setup
