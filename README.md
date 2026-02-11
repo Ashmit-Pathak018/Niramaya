@@ -50,10 +50,7 @@ It features an **Emergency Lock Screen Widget** powered by Android Foreground Se
 
 | **Secure Home** | **AI Analysis** | **Emergency Mode** |
 |:---:|:---:|:---:|
-| ![Home](https://via.placeholder.com/200x400?text=Encrypted+Home) | ![AI](https://via.placeholder.com/200x400?text=Gemini+Scanning) | ![SOS](https://via.placeholder.com/200x400?text=Lock+Screen+Widget) |
-
-*(Replace these placeholder links with actual screenshots of your app!)*
-
+| ![Home](screenshots/home.jpeg) | ![AI](screenshots/doctor_summary.jpeg) | ![Profile](screenshots/medical_id.jpeg) |
 ---
 
 ## 🏗️ Installation & Setup
